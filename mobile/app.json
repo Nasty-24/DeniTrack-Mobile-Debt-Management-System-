@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "DeniTrack",
+    "slug": "denitrack",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F6F4EF",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ke.denitrack.app"
+    },
+    "android": {
+      "package": "ke.denitrack.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#1F5F43",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "allowBackup": false,
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F6F4EF",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#121513"
+          }
+        }
+      ],
+      "./plugins/withWindowsLongPathBuild"
+    ]
+  }
+}

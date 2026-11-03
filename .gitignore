@@ -1,0 +1,44 @@
+# Secrets and local data
+.env
+*.db
+*.sqlite
+*.jks
+*.keystore
+!debug.keystore
+google-services.json
+GoogleService-Info.plist
+*.p8
+*.p12
+*.pem
+backups/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+mobile/android/
+mobile/ios/
+coverage/
+*.apk
+*.aab
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Editor / tooling settings
+.claude/

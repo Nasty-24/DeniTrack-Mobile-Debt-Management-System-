@@ -1,0 +1,56 @@
+# Local / single-server deployment. Copy .env.example to .env and fill in real values first.
+#   docker compose up -d db
+#   docker compose run --rm migrate
+#   docker compose up -d api worker
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: denitrack
+      POSTGRES_USER: denitrack_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      DENITRACK_APP_PASSWORD: ${DENITRACK_APP_PASSWORD:?set DENITRACK_APP_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/scripts/create_app_role.sh:/docker-entrypoint-initdb.d/10-create-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U denitrack_owner -d denitrack"]
+      interval: 5s
+      retries: 10
+    # Not published to the host. Use `docker compose exec db psql ...` for maintenance.
+
+  # Schema owner runs migrations; the API and worker use the restricted role so RLS applies.
+  migrate:
+    build: ./backend
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    env_file: .env
+    environment:
+      DENITRACK_DATABASE_URL: postgresql+psycopg://denitrack_owner:${POSTGRES_PASSWORD}@db:5432/denitrack
+    depends_on:
+      db: { condition: service_healthy }
+    profiles: ["tools"]
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DENITRACK_DATABASE_URL: postgresql+psycopg://denitrack_app:${DENITRACK_APP_PASSWORD}@db:5432/denitrack
+    depends_on:
+      db: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:8000:8000" # put a TLS-terminating reverse proxy in front (see docs/deployment.md)
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.scheduler"]
+    env_file: .env
+    environment:
+      DENITRACK_DATABASE_URL: postgresql+psycopg://denitrack_app:${DENITRACK_APP_PASSWORD}@db:5432/denitrack
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:

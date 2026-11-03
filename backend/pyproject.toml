@@ -1,0 +1,35 @@
+[project]
+name = "denitrack-backend"
+version = "1.0.0"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+ignore = [
+    "B008",  # FastAPI Depends() in defaults is idiomatic
+    "S105",  # token-type literals flagged as passwords
+    "S608",  # f-string SQL only in migrations with constant table names
+    "UP042",  # (str, Enum) kept for explicit JSON values
+    "UP046",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S106", "S603", "E501"]
+"app/seed.py" = ["S106"]
+"scripts/*" = ["S603", "S607", "E501"]  # operator tools: argv lists, no shell
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]
