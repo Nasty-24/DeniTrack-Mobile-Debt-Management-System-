@@ -9,7 +9,7 @@ const MIN_VISIBLE_MS = 700;
 const SLOW_START_MS = 1500;
 
 /**
- * Launch screen shown while the session is restored. The mark sits exactly where the
+ * Launch screen shown while the session is restored. The app icon sits exactly where the
  * native splash draws it (same image, size and centre), so the hand-off is seamless; the
  * name and slogan fade in below it, and the whole screen fades out once the app is ready.
  */
