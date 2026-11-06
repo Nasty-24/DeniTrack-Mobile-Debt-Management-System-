@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -10,6 +11,7 @@ import { OutboxProvider } from './src/hooks/useOutbox';
 import { SessionProvider, useSession } from './src/hooks/useSession';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ApiError } from './src/services/apiClient';
+import { shouldShowSplashOnResume } from './src/services/appLifecycle';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 
 void SplashScreen.preventAutoHideAsync();
@@ -25,12 +27,30 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Shows the branded launch screen until the session has been restored. */
+/**
+ * Shows the branded launch screen until the session has been restored, and again each time
+ * the person returns to the app after leaving it (see services/appLifecycle.ts).
+ */
 function Launch() {
   const { status } = useSession();
   const { scheme } = useTheme();
   const [splashDone, setSplashDone] = useState(false);
   const done = useCallback(() => setSplashDone(true), []);
+
+  useEffect(() => {
+    let leftAt: number | null = null;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        leftAt = Date.now();
+      } else if (state === 'active' && leftAt !== null) {
+        const away = Date.now() - leftAt;
+        leftAt = null;
+        if (shouldShowSplashOnResume(away)) setSplashDone(false);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />

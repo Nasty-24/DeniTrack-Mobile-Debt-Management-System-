@@ -72,7 +72,7 @@ Run on Windows 11, 29–31 Oct 2026.
 | Live server smoke (uvicorn + seeded data) | health OK; dashboard totals hand-checked against the seed (outstanding 79,300.00, overdue 28,900.00, collected today 12,000.00, month 44,000.00, pending 3,000.00); PDF export 200 |
 | Mobile `tsc --noEmit` (strict) | clean |
 | Mobile `eslint` (eslint-config-expo, incl. React Compiler rules) | clean |
-| Mobile tests (`jest`) | **123 passed** (money, phone, dates, validation, offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
+| Mobile tests (`jest`) | **134 passed** (money, phone, dates, validation, offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), splash-on-reopen rules, components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
 | `expo install --check` | dependencies up to date |
 | Android release APK (`gradlew assembleRelease`) | **built** on Windows (29.5 min): `ke.denitrack.app` 1.0.0, Android 7.0+ (API 24), target API 36, arm64-v8a + x86_64, JS bundle embedded, SQLCipher compiled in; signed with the debug key (test build) |
 
@@ -117,7 +117,7 @@ blocked in `app.json`. The APK requests internet and network-state access, vibra
 | 11 | Unauthorised users blocked | Done: role tests |
 | 12 | Businesses isolated | Done: application checks plus PostgreSQL RLS, both tested |
 | 13 | Financial changes auditable | Done: audit log with before/after and reason |
-| 14 | Core workflows tested | Done: 121 backend + 5 PostgreSQL + 123 mobile tests |
+| 14 | Core workflows tested | Done: 121 backend + 5 PostgreSQL + 134 mobile tests |
 | 15 | Mobile app buildable from docs | Done on Windows (release APK built from the documented steps). The Linux CI Android job has not been run yet |
 | 16 | Mock / sandbox / production modes distinct | Done: explicit config, shown in `/health` and the app |
 | 17 | Limitations documented | Done: below and in [security.md](docs/security.md) |

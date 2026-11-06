@@ -10,6 +10,7 @@ import { AppText, Button, Card, ChoiceChips, Divider, ListRow, Row, SectionHeade
 import { bizPath, useReport } from '../hooks/queries';
 import { useSession } from '../hooks/useSession';
 import { api } from '../services/api';
+import { expectExternalActivity } from '../services/appLifecycle';
 import { colors, space } from '../theme/tokens';
 import type { PaymentMethod } from '../types/api';
 import { addDaysISO, formatDate, isValidISODate, todayISO } from '../utils/dates';
@@ -68,6 +69,7 @@ export function ReportsScreen() {
       file.create();
       if (format === 'csv') file.write(await api.get<string>(path, { query, text: true }));
       else file.write(await api.get<Uint8Array>(path, { query, binary: true }));
+      expectExternalActivity();
       await Sharing.shareAsync(file.uri, { mimeType: format === 'csv' ? 'text/csv' : 'application/pdf', dialogTitle: `${meta.label} report` });
     } catch (e) {
       Alert.alert('Export failed', errorMessage(e));

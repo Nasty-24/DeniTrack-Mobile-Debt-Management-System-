@@ -87,7 +87,7 @@ const buttonColors = themedStyles(
     primary: { bg: c.brand, pressed: c.brandPressed, fg: c.onBrand, border: c.brand },
     secondary: { bg: c.surface, pressed: c.surfaceSunken, fg: c.ink, border: c.borderStrong },
     danger: { bg: c.surface, pressed: c.dangerSoft, fg: c.danger, border: c.danger },
-    ghost: { bg: 'transparent', pressed: c.surfaceSunken, fg: c.brand, border: 'transparent' },
+    ghost: { bg: 'transparent', pressed: c.surfaceSunken, fg: c.brandText, border: 'transparent' },
   }),
 );
 

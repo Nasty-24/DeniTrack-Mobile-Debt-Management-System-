@@ -15,6 +15,7 @@ import { useSession } from '../hooks/useSession';
 import type { AppScreenProps } from '../navigation/types';
 import { api, newIdempotencyKey } from '../services/api';
 import { ApiError } from '../services/apiClient';
+import { expectExternalActivity } from '../services/appLifecycle';
 import { LOCAL_PREFIX } from '../services/outbox';
 import { colors, space } from '../theme/tokens';
 import type { Customer } from '../types/api';
@@ -279,7 +280,7 @@ export function CustomerProfileScreen({ route, navigation }: AppScreenProps<'Cus
         ) : null}
         <Divider />
         <View style={{ marginTop: space.md, gap: space.xs }}>
-          <Button title={`Call ${formatPhone(cust.phone)}`} variant="ghost" compact onPress={() => Linking.openURL(`tel:${cust.phone}`)} style={{ alignSelf: 'flex-start' }} />
+          <Button title={`Call ${formatPhone(cust.phone)}`} variant="ghost" compact onPress={() => { expectExternalActivity(); void Linking.openURL(`tel:${cust.phone}`); }} style={{ alignSelf: 'flex-start' }} />
           {cust.email ? <AppText color={colors.inkMuted}>{cust.email}</AppText> : null}
           {cust.address ? <AppText color={colors.inkMuted}>{cust.address}</AppText> : null}
           {cust.notes ? <AppText color={colors.inkMuted}>Note: {cust.notes}</AppText> : null}

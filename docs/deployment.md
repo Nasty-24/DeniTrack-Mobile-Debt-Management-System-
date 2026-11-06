@@ -147,7 +147,9 @@ The splash shows the app icon. `mobile/assets/splash-icon.png` is built from
 `mobile/assets/icon.png` by `python mobile/scripts/make_splash.py` (needs Pillow). Re-run it
 whenever the icon changes, so the splash always matches the app icon. The native splash (light and dark backgrounds) is configured under
 `expo-splash-screen` in `app.json`. The in-app launch screen (`src/components/BrandSplash.tsx`)
-continues it while the session is restored.
+continues it while the session is restored, and is shown again whenever the app is reopened after
+being left (Home, app switcher, screen lock), but not when the app itself opened the share sheet,
+PDF viewer or dialer (`src/services/appLifecycle.ts`).
 
 ### Building on Windows
 

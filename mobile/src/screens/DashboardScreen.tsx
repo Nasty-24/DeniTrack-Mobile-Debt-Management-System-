@@ -1,4 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
 
 import { MoneyText, StatTile, VerificationBadge } from '../components/finance';
@@ -7,7 +8,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/states';
 import { AppText, Button, Card, Divider, ListRow, Row, SectionHeader } from '../components/ui';
 import { useDashboard } from '../hooks/queries';
 import { useSession } from '../hooks/useSession';
-import { colors, space } from '../theme/tokens';
+import { colors, radius, space } from '../theme/tokens';
 import { dueLabel, formatDate, formatDateTime } from '../utils/dates';
 import { isZero } from '../utils/money';
 
@@ -33,20 +34,26 @@ export function DashboardScreen() {
       </View>
       <CachedNotice fromCache={fromCache} savedAt={savedAt} />
 
-      <Card style={{ marginTop: space.lg }}>
-        <AppText variant="caption" color={colors.inkMuted}>
+      {/* The app icon's gradient: deep blue to brighter blue (both readable with white text). */}
+      <LinearGradient
+        colors={[colors.heroStart, colors.heroEnd]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
+      >
+        <AppText variant="caption" color={colors.onBrand}>
           Total outstanding
         </AppText>
-        <MoneyText amount={d.total_outstanding} variant="display" />
-        <AppText variant="caption" color={colors.inkMuted} style={{ marginTop: space.xs }}>
+        <MoneyText amount={d.total_outstanding} variant="display" color={colors.onBrand} />
+        <AppText variant="caption" color={colors.onBrand} style={{ marginTop: space.xs }}>
           {d.customers_with_balance} customer{d.customers_with_balance === 1 ? '' : 's'} owe you · as of {formatDate(d.as_of)}
         </AppText>
         {!isZero(d.pending_verification) ? (
-          <AppText variant="caption" color={colors.warning} style={{ marginTop: space.xs }}>
+          <AppText variant="caption" color={colors.onBrand} style={[styles.heroNote, { borderTopColor: colors.onBrand }]}>
             {d.pending_verification_count} payment{d.pending_verification_count === 1 ? '' : 's'} awaiting verification are not yet deducted
           </AppText>
         ) : null}
-      </Card>
+      </LinearGradient>
 
       <View style={styles.tiles}>
         <StatTile
@@ -148,6 +155,8 @@ export function DashboardScreen() {
 
 const styles = StyleSheet.create({
   header: { paddingTop: space.sm },
+  hero: { marginTop: space.lg, borderRadius: radius.lg, padding: space.lg },
+  heroNote: { marginTop: space.sm, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth },
   tiles: { flexDirection: 'row', gap: space.md, marginTop: space.md },
   actions: { flexDirection: 'row', gap: space.md, marginTop: space.xl },
 });

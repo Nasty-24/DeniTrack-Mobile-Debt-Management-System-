@@ -17,6 +17,7 @@ import { useOutbox } from '../hooks/useOutbox';
 import { useSession } from '../hooks/useSession';
 import type { AppScreenProps } from '../navigation/types';
 import { api, newIdempotencyKey } from '../services/api';
+import { expectExternalActivity } from '../services/appLifecycle';
 import { colors, space } from '../theme/tokens';
 import type { Debt, Payment, PaymentMethod, PaymentRequest, Receipt } from '../types/api';
 import { dueLabel, formatDateTime } from '../utils/dates';
@@ -137,7 +138,7 @@ export function RecordPaymentScreen({ route, navigation }: AppScreenProps<'Recor
               <ListRow
                 title="Oldest due first"
                 subtitle={`Recommended · ${openDebts.length} open debt${openDebts.length > 1 ? 's' : ''}`}
-                right={<AppText color={debtId === '' ? colors.brand : colors.inkFaint}>{debtId === '' ? 'Selected' : ''}</AppText>}
+                right={<AppText color={debtId === '' ? colors.brandText : colors.inkFaint}>{debtId === '' ? 'Selected' : ''}</AppText>}
                 onPress={() => setValue('debt_id', '')}
               />
               {openDebts.map((d) => (
@@ -146,7 +147,7 @@ export function RecordPaymentScreen({ route, navigation }: AppScreenProps<'Recor
                   <ListRow
                     title={`${d.debt_number} · ${d.description}`}
                     subtitle={`${formatKES(allocatable(d))} payable · ${dueLabel(d.next_due_date ?? d.due_date)}`}
-                    right={<AppText color={debtId === d.id ? colors.brand : colors.inkFaint}>{debtId === d.id ? 'Selected' : ''}</AppText>}
+                    right={<AppText color={debtId === d.id ? colors.brandText : colors.inkFaint}>{debtId === d.id ? 'Selected' : ''}</AppText>}
                     onPress={() => setValue('debt_id', d.id)}
                     accessibilityLabel={`Apply to ${d.debt_number}${debtId === d.id ? ', selected' : ''}`}
                   />
@@ -425,6 +426,7 @@ export function ReceiptScreen({ route }: AppScreenProps<'Receipt'>) {
     setBusy(true);
     try {
       const { uri } = await Print.printToFileAsync({ html: receiptHtml(r) });
+      expectExternalActivity();
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Receipt ${r.receipt_number}`, UTI: 'com.adobe.pdf' });
     } catch (e) {
       Alert.alert('Could not create PDF', errorMessage(e));
@@ -459,7 +461,7 @@ export function ReceiptScreen({ route }: AppScreenProps<'Receipt'>) {
         <AppText variant="caption" color={colors.inkMuted} style={{ marginTop: space.lg }}>Recorded by {s.recorded_by}</AppText>
       </Card>
       <Row gap={space.md} style={{ marginTop: space.lg }}>
-        <Button title="Share as text" variant="secondary" style={{ flex: 1 }} onPress={() => Share.share({ message: r.share_text, title: r.receipt_number })} />
+        <Button title="Share as text" variant="secondary" style={{ flex: 1 }} onPress={() => { expectExternalActivity(); void Share.share({ message: r.share_text, title: r.receipt_number }); }} />
         <Button title="Share PDF" style={{ flex: 1 }} loading={busy} onPress={sharePdf} />
       </Row>
     </Screen>

@@ -22,6 +22,10 @@ const PAIRS: [keyof Palette, keyof Palette, number][] = [
   ['inkMuted', 'canvas', 4.5],
   ['inkMuted', 'surface', 4.5],
   ['onBrand', 'brand', 4.5],
+  ['onBrand', 'heroStart', 4.5], // white text on the dashboard gradient, deep end
+  ['onBrand', 'heroEnd', 4.5], // ... and light end
+  ['brandText', 'canvas', 4.5],
+  ['brandText', 'surface', 4.5],
   ['success', 'successSoft', 4.5],
   ['warning', 'warningSoft', 4.5],
   ['danger', 'dangerSoft', 4.5],

@@ -36,7 +36,7 @@ export function OnboardingScreen({ navigation }: AuthScreenProps<'Onboarding'>) 
   return (
     <Screen edges={['top', 'bottom']}>
       <View style={{ marginTop: space.xxl }}>
-        <AppText variant="label" color={colors.brand}>
+        <AppText variant="label" color={colors.brandText}>
           DeniTrack
         </AppText>
         <AppText variant="display" style={{ marginTop: space.sm }}>
@@ -46,7 +46,7 @@ export function OnboardingScreen({ navigation }: AuthScreenProps<'Onboarding'>) 
       <View style={{ marginTop: space.xxl, gap: space.xl }}>
         {POINTS.map(([title, body], i) => (
           <View key={title} style={styles.point}>
-            <AppText variant="heading" color={colors.brand} style={styles.pointNo}>
+            <AppText variant="heading" color={colors.brandText} style={styles.pointNo}>
               {i + 1}
             </AppText>
             <View style={{ flex: 1 }}>

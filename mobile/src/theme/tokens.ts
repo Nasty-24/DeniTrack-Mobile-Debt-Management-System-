@@ -1,6 +1,7 @@
 /**
- * DeniTrack design tokens. Warm neutral surfaces, dark ink, and three semantic
- * accents: green (paid / success), amber (due soon), red (overdue / critical).
+ * DeniTrack design tokens, derived from the app icon: its light-blue background (#E6F4FD)
+ * and its chevron, which shades from deep blue (#0B6FCE) to light blue (#7BBEFC).
+ * Semantic accents keep their meaning: green (paid), amber (due soon), red (overdue).
  * Both palettes are checked for WCAG AA contrast in src/__tests__/theme.test.ts.
  */
 export interface Palette {
@@ -12,9 +13,12 @@ export interface Palette {
   inkFaint: string; // placeholders and disabled text only
   border: string;
   borderStrong: string;
-  brand: string; // primary actions
+  brand: string; // primary actions (filled)
   brandPressed: string;
-  onBrand: string; // text and icons on brand
+  brandText: string; // brand-coloured text: links, ghost buttons, selected items
+  onBrand: string; // text and icons on brand and on the hero gradient
+  heroStart: string; // icon gradient, deep end
+  heroEnd: string; // icon gradient, light end (kept dark enough for white text)
   success: string;
   successSoft: string;
   warning: string;
@@ -29,52 +33,58 @@ export interface Palette {
 }
 
 export const lightColors: Palette = {
-  canvas: '#F6F4EF',
+  canvas: '#E6F4FD', // the icon's background
   surface: '#FFFFFF',
-  surfaceSunken: '#EFECE5',
-  ink: '#1B1E1C',
-  inkMuted: '#5E625E',
-  inkFaint: '#8A8D88',
-  border: '#E2DED5',
-  borderStrong: '#C9C4B8',
-  brand: '#1F5F43',
-  brandPressed: '#174A34',
+  surfaceSunken: '#D9EBFA',
+  ink: '#0C1B2D',
+  inkMuted: '#45586E',
+  inkFaint: '#8296AD',
+  border: '#CFE2F3',
+  borderStrong: '#A9C7E3',
+  brand: '#0B6FCE', // the icon's deep blue
+  brandPressed: '#095CAB',
+  brandText: '#0A63B8',
   onBrand: '#FFFFFF',
+  heroStart: '#0A57AE',
+  heroEnd: '#1675D6',
   success: '#1F7A4D',
   successSoft: '#E5F2EA',
   warning: '#8A5A00',
   warningSoft: '#FBF0D9',
   danger: '#B42318',
   dangerSoft: '#FCE9E7',
-  info: '#2F5D8A',
-  infoSoft: '#E6EEF6',
-  focus: '#2F5D8A',
+  info: '#0A63B8',
+  infoSoft: '#DCEEFD',
+  focus: '#0B6FCE',
   thumb: '#FFFFFF',
-  overlay: 'rgba(0,0,0,0.35)',
+  overlay: 'rgba(12,27,45,0.4)',
 };
 
-/** Warm near-black surfaces; accents lightened so text stays readable on dark backgrounds. */
+/** Deep navy surfaces in the icon's blue family; accents lightened for dark backgrounds. */
 export const darkColors: Palette = {
-  canvas: '#121513',
-  surface: '#1B1F1C',
-  surfaceSunken: '#252A26',
-  ink: '#ECEDE9',
-  inkMuted: '#A9AEA8',
-  inkFaint: '#7C827C',
-  border: '#2D332F',
-  borderStrong: '#46504A',
-  brand: '#2E7D57',
-  brandPressed: '#256848',
+  canvas: '#0A1422',
+  surface: '#111E30',
+  surfaceSunken: '#18283E',
+  ink: '#E6EEF8',
+  inkMuted: '#A0B2C8',
+  inkFaint: '#71849C',
+  border: '#213550',
+  borderStrong: '#34507A',
+  brand: '#1E6FD0',
+  brandPressed: '#195DB0',
+  brandText: '#7DB8F6',
   onBrand: '#FFFFFF',
+  heroStart: '#0C3F80',
+  heroEnd: '#1663C4',
   success: '#5CC08A',
-  successSoft: '#16301F',
+  successSoft: '#13301F',
   warning: '#E3B65A',
   warningSoft: '#33290F',
   danger: '#F2796B',
   dangerSoft: '#3A1B17',
-  info: '#86B7E6',
-  infoSoft: '#172636',
-  focus: '#86B7E6',
+  info: '#7DB8F6',
+  infoSoft: '#132B47',
+  focus: '#7DB8F6',
   thumb: '#FFFFFF',
   overlay: 'rgba(0,0,0,0.6)',
 };

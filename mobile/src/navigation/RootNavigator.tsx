@@ -34,7 +34,7 @@ function navTheme(scheme: Scheme): Theme {
     ...base,
     colors: {
       ...base.colors,
-      primary: colors.brand,
+      primary: colors.brandText,
       background: colors.canvas,
       card: colors.surface,
       text: colors.ink,
@@ -61,7 +61,7 @@ function Tabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: colors.brand,
+        tabBarActiveTintColor: colors.brandText,
         tabBarInactiveTintColor: colors.inkMuted,
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarIcon: ({ color, size }) => <Feather name={TAB_ICONS[route.name]} color={color} size={size - 2} />,

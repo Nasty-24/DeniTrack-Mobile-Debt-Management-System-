@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#F6F4EF",
+    "backgroundColor": "#E6F4FD",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "ke.denitrack.app"
@@ -46,10 +46,10 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#F6F4EF",
+          "backgroundColor": "#E6F4FD",
           "dark": {
             "image": "./assets/splash-icon.png",
-            "backgroundColor": "#121513"
+            "backgroundColor": "#0A1422"
           }
         }
       ],
