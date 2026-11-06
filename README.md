@@ -41,6 +41,11 @@ Android release signing are in [docs/deployment.md](docs/deployment.md).
   installment dates, so a paid debt can never show as overdue.
 - Typed-in M-Pesa codes and bank transfers stay **awaiting verification** until an owner or admin
   confirms them; STK Push payments are confirmed via the provider callback plus an independent status query.
+- M-Pesa payments can also be **read from the owner's phone**: the Android app reads M-Pesa
+  "you have received" SMS (sender M-PESA only) and the server records a payment only when the
+  payer matches one customer by phone number **and** name, including Safaricom's masked numbers
+  (e.g. 0722***712). Anything else waits under More → M-Pesa messages for an owner to match. The
+  SMS also confirms a code a cashier typed in, and a transaction code is never applied twice.
 - Overpayments are refused. Posted payments are never edited or deleted (corrections are audited
   reversals and adjustments). Receipt numbers are gapless per business and year.
 - Debt and payment creation require an `Idempotency-Key`; retries and offline replays never double-post.
@@ -50,9 +55,10 @@ Android release signing are in [docs/deployment.md](docs/deployment.md).
 | Integration | Default | Available | Status |
 |---|---|---|---|
 | M-Pesa (Daraja STK Push) | `mock` | `sandbox`, `production` | Daraja client implemented but **not tested against Safaricom** (no credentials). Mock provider fully tested |
-| SMS (Africa's Talking) | `mock` | `sandbox`, `production` | Client implemented but **not tested against the live API**. Mock provider fully tested |
+| Reminder SMS | from the owner's phone | Africa's Talking (`mock`, `sandbox`, `production`) | Phone sending (Android, SEND_SMS) is covered by tests but **not yet tried on a real phone**. The Africa's Talking client is implemented but not tested against the live API |
+| M-Pesa SMS reading | off (switched on per phone) | — | Parser tested on known formats, including the 2026 masked numbers; **not yet tried on real M-Pesa messages** |
 | Push (FCM) | `mock` | — | Mock only; FCM not implemented |
-| WhatsApp Business | — | — | Not implemented; reminders on this channel are recorded as failed with a clear reason |
+| WhatsApp | one-tap from a customer's profile | — | Opens WhatsApp with the reminder ready; the person taps send. Automatic WhatsApp (Business API) is not implemented |
 
 The current modes are reported by `GET /api/v1/health` and shown in the app under Settings → About.
 
@@ -62,8 +68,8 @@ Run on Windows 11, 29–31 Oct 2026.
 
 | Check | Result |
 |---|---|
-| Backend tests, SQLite (`pytest`) | **121 passed** (+5 PostgreSQL-only tests skipped) |
-| Backend tests, PostgreSQL (same suite) | **121 passed** |
+| Backend tests, SQLite (`pytest`) | **170 passed** (+5 PostgreSQL-only tests skipped) |
+| Backend tests, PostgreSQL (same suite) | **175 passed** |
 | Migrations and row-level security on PostgreSQL (`tests/test_postgres_rls.py`): upgrade → downgrade → upgrade → `alembic check`, cross-tenant reads/writes blocked for a non-superuser role, full API + worker smoke under RLS | **5 passed** |
 | Backend coverage | 88% of `app/` |
 | `ruff check` + `ruff format --check`, `mypy app` | clean |
@@ -72,7 +78,7 @@ Run on Windows 11, 29–31 Oct 2026.
 | Live server smoke (uvicorn + seeded data) | health OK; dashboard totals hand-checked against the seed (outstanding 79,300.00, overdue 28,900.00, collected today 12,000.00, month 44,000.00, pending 3,000.00); PDF export 200 |
 | Mobile `tsc --noEmit` (strict) | clean |
 | Mobile `eslint` (eslint-config-expo, incl. React Compiler rules) | clean |
-| Mobile tests (`jest`) | **134 passed** (money, phone, dates, validation, offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), splash-on-reopen rules, components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
+| Mobile tests (`jest`) | **143 passed** (money, phone, dates, validation, offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), splash-on-reopen rules, M-Pesa SMS reading, reminder SMS from the phone, one-tap SMS/WhatsApp reminders, M-Pesa matching screen, components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
 | `expo install --check` | dependencies up to date |
 | Android release APK (`gradlew assembleRelease`) | **built** on Windows (29.5 min): `ke.denitrack.app` 1.0.0, Android 7.0+ (API 24), target API 36, arm64-v8a + x86_64, JS bundle embedded, SQLCipher compiled in; signed with the debug key (test build) |
 
@@ -117,7 +123,7 @@ blocked in `app.json`. The APK requests internet and network-state access, vibra
 | 11 | Unauthorised users blocked | Done: role tests |
 | 12 | Businesses isolated | Done: application checks plus PostgreSQL RLS, both tested |
 | 13 | Financial changes auditable | Done: audit log with before/after and reason |
-| 14 | Core workflows tested | Done: 121 backend + 5 PostgreSQL + 134 mobile tests |
+| 14 | Core workflows tested | Done: 170 backend + 5 PostgreSQL + 143 mobile tests |
 | 15 | Mobile app buildable from docs | Done on Windows (release APK built from the documented steps). The Linux CI Android job has not been run yet |
 | 16 | Mock / sandbox / production modes distinct | Done: explicit config, shown in `/health` and the app |
 | 17 | Limitations documented | Done: below and in [security.md](docs/security.md) |
@@ -130,7 +136,11 @@ blocked in `app.json`. The APK requests internet and network-state access, vibra
   receipt share, offline queue, reminder) before giving it to a business.
 - **M-Pesa Daraja and Africa's Talking clients are untested against the real services.** Test them in
   sandbox mode before any production use (steps in deployment.md).
-- No customer self-service portal (the architecture allows adding one), no WhatsApp channel, no FCM push.
+- **SMS features have not been tried on a real phone with real M-Pesa messages yet.** Safaricom changes
+  its wording from time to time; check the first payments under More → M-Pesa messages.
+- **Google Play restricts the SMS permissions** (READ_SMS, SEND_SMS). They work in an APK you install
+  yourself; a Play Store release needs Google's approval for them, or a build without these features.
+- No customer self-service portal (the architecture allows adding one), no automatic WhatsApp (one-tap only), no FCM push.
 - No customer credit balances: overpayments are refused, and over-collected M-Pesa money is flagged for manual refund.
 - Login rate limiting is per-process; use Redis behind multiple API replicas.
 - No MFA for owners yet.

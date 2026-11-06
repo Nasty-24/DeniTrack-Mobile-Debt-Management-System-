@@ -21,6 +21,7 @@ import {
 import { ForgotPasswordScreen, OnboardingScreen, RegisterScreen, SignInScreen } from '../screens/auth/AuthScreens';
 import { CustomerFormScreen, CustomerListScreen, CustomerProfileScreen } from '../screens/CustomerScreens';
 import { DashboardScreen } from '../screens/DashboardScreen';
+import { MpesaMessagesScreen } from '../screens/MpesaScreens';
 import { DebtDetailScreen, DebtFormScreen, DebtsTabScreen, OverdueDebtsScreen, UpcomingPaymentsScreen } from '../screens/DebtScreens';
 import { PaymentDetailScreen, PaymentsTabScreen, ReceiptScreen, RecordPaymentScreen } from '../screens/PaymentScreens';
 import { ReportsScreen } from '../screens/ReportsScreen';
@@ -124,6 +125,7 @@ function AppFlow() {
       <AppStack.Screen name="BusinessSetup" component={BusinessSetupScreen} options={{ title: 'Business setup' }} />
       <AppStack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Change password' }} />
       <AppStack.Screen name="SyncQueue" component={SyncQueueScreen} options={{ title: 'Waiting to sync' }} />
+      <AppStack.Screen name="MpesaMessages" component={MpesaMessagesScreen} options={{ title: 'M-Pesa messages' }} />
     </AppStack.Navigator>
   );
 }

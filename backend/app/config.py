@@ -3,10 +3,49 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 IntegrationMode = Literal["mock", "sandbox", "production"]
+
+# Connection options libpq accepts. psycopg hands URL query options to libpq, which refuses
+# any others, such as the connection_limit / pool_timeout some hosting platforms append.
+LIBPQ_OPTIONS = frozenset(
+    {
+        "host", "hostaddr", "port", "dbname", "user", "password", "passfile", "require_auth",
+        "channel_binding", "connect_timeout", "client_encoding", "options", "application_name",
+        "fallback_application_name", "keepalives", "keepalives_idle", "keepalives_interval",
+        "keepalives_count", "tcp_user_timeout", "replication", "gssencmode", "sslmode",
+        "requiressl", "sslnegotiation", "sslcompression", "sslcert", "sslkey", "sslpassword",
+        "sslcertmode", "sslrootcert", "sslcrl", "sslcrldir", "sslsni", "requirepeer",
+        "ssl_min_protocol_version", "ssl_max_protocol_version", "krbsrvname", "gsslib",
+        "gssdelegation", "service", "target_session_attrs", "load_balance_hosts",
+    }
+)  # fmt: skip
+
+# .env.example ships values containing this marker; production refuses them.
+PLACEHOLDER_MARKER = "change-me"
+
+
+def normalize_database_url(url: str) -> str:
+    """Accept the plain postgres:// or postgresql:// URLs hosting platforms provide.
+
+    They name no driver (SQLAlchemy would look for psycopg2, which is not installed) and may
+    carry pool options meant for other libraries. URLs that need neither fix are returned as is.
+    """
+    if not url.startswith(("postgres://", "postgresql://", "postgresql+")):
+        return url
+    parsed = make_url(url)
+    changed = False
+    if parsed.drivername in ("postgres", "postgresql"):
+        parsed = parsed.set(drivername="postgresql+psycopg")
+        changed = True
+    kept = {key: value for key, value in parsed.query.items() if key in LIBPQ_OPTIONS}
+    if len(kept) != len(parsed.query):
+        parsed = parsed.set(query=kept)
+        changed = True
+    return parsed.render_as_string(hide_password=False) if changed else url
 
 
 class Settings(BaseSettings):
@@ -44,6 +83,11 @@ class Settings(BaseSettings):
     # Daraja callbacks are not signed; an unguessable path token is one layer of defence.
     mpesa_callback_token: str = "dev-callback-token"
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        return normalize_database_url(value)
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
@@ -52,12 +96,14 @@ class Settings(BaseSettings):
         if not self.is_production:
             return
         problems = []
-        if self.jwt_secret.startswith("dev-only"):
-            problems.append("DENITRACK_JWT_SECRET must be set")
+        if self.jwt_secret.startswith("dev-only") or PLACEHOLDER_MARKER in self.jwt_secret:
+            problems.append("DENITRACK_JWT_SECRET must be set to your own random value")
         if self.database_url.startswith("sqlite"):
             problems.append("DENITRACK_DATABASE_URL must point to PostgreSQL")
-        if self.mpesa_callback_token == "dev-callback-token":
-            problems.append("DENITRACK_MPESA_CALLBACK_TOKEN must be set")
+        elif PLACEHOLDER_MARKER in self.database_url:
+            problems.append("DENITRACK_DATABASE_URL still uses the example database password")
+        if self.mpesa_callback_token == "dev-callback-token" or PLACEHOLDER_MARKER in self.mpesa_callback_token:
+            problems.append("DENITRACK_MPESA_CALLBACK_TOKEN must be set to your own random value")
         if problems:
             raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))
 

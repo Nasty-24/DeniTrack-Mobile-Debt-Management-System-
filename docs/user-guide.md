@@ -52,6 +52,24 @@ Nothing financial is ever deleted:
 
 Every correction appears in **More → Audit log** with who did it, when, and why.
 
+## M-Pesa payments recorded automatically
+
+On the phone that receives your business's M-Pesa messages, an owner or administrator turns on
+**More → Settings → This phone → Record M-Pesa payments automatically** and allows SMS access.
+
+- DeniTrack reads only messages from **M-PESA**, starting from the moment you turn it on.
+- When a message says you received money, the payment is recorded and the debt reduced **only if the
+  payer's phone number and name both match one customer**. Safaricom now hides part of the number
+  (e.g. 0722\*\*\*712); DeniTrack matches the digits that are shown together with the name.
+- If a cashier already typed that M-Pesa code, the message confirms their payment instead.
+- Anything it cannot match safely (a different name, someone paying for a customer, more than is owed)
+  waits under **More → M-Pesa messages → Needs matching**. Tap **Record for …** or **Choose customer**,
+  or **Not a debt payment** for things like a cash sale paid by M-Pesa.
+- It runs when the app opens, every minute while it is open, and about every 15 minutes in the background.
+  The phone needs a connection to your DeniTrack server.
+
+Keep customers' phone numbers correct: the number is what DeniTrack matches first.
+
 ## Reminders
 
 **More → Reminders → Schedule** controls when customers get a polite SMS: by default 7, 3 and 1
@@ -61,6 +79,14 @@ day(s) before the due date, on the day, and 3 and 7 days after. Reminders:
 - never exceed your weekly limit per customer (default 3);
 - skip customers who asked not to be contacted (turn off *Send SMS reminders* on their profile);
 - always use the current balance, and are cancelled automatically if the customer has paid.
+
+Reminder SMS are sent **from the owner's phone** as normal text messages (SMS charges apply), so no SMS
+provider account is needed. Turn on **Settings → This phone → Send reminder SMS from this phone** on one
+phone. If you later get an SMS provider, choose it under **Schedule → Send SMS from**.
+
+**Remind one customer now:** open their profile and tap **Send reminder**, then **SMS** (sent from your
+phone) or **WhatsApp** (opens WhatsApp with the message ready; you tap send). The message uses your
+wording and their current balance, and counts towards the weekly limit.
 
 Edit the wording under **Messages**. Keep it friendly. Never threaten or shame, and remember reminders go only to the customer.
 

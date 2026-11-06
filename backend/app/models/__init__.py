@@ -113,6 +113,14 @@ class ReminderChannel(str, enum.Enum):
     whatsapp = "whatsapp"
 
 
+class MpesaSmsStatus(str, enum.Enum):
+    applied = "applied"  # recorded automatically as a verified payment
+    confirmed = "confirmed"  # confirmed a payment staff had already entered with this code
+    already_recorded = "already_recorded"
+    needs_review = "needs_review"  # money arrived but no single customer matched by number and name
+    dismissed = "dismissed"  # an owner marked it as not a debt repayment
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
@@ -191,6 +199,9 @@ class BusinessSettings(TimestampMixin, Base):
     cashier_can_view_reports: Mapped[bool] = mapped_column(Boolean, default=False)
     payment_methods: Mapped[list] = mapped_column(JSON, default=lambda: ["cash", "mpesa", "bank_transfer", "other"])
     receipt_footer: Mapped[str | None] = mapped_column(String(300))
+    # "phone": customer SMS reminders are sent by the owner's phone running the app.
+    # "provider": sent by the configured SMS gateway (Africa's Talking).
+    sms_sender: Mapped[str] = mapped_column(String(16), default="phone", server_default="phone")
 
 
 class Counter(Base):
@@ -395,6 +406,37 @@ class PaymentProviderEvent(Base):
     received_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
+class MpesaSmsMessage(Base):
+    """An M-Pesa "you have received" SMS read on the owner's phone, and what was done with it.
+
+    The transaction code is unique per business, so the same SMS is never applied twice,
+    however many times the phone sends it.
+    """
+
+    __tablename__ = "mpesa_sms_messages"
+    __table_args__ = (
+        UniqueConstraint("business_id", "transaction_code"),
+        Index("ix_mpesa_sms_business_status", "business_id", "status"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    business_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("businesses.id"), index=True)
+    transaction_code: Mapped[str] = mapped_column(String(10))
+    amount: Mapped[Decimal] = mapped_column(Money)
+    payer_name: Mapped[str] = mapped_column(String(160))
+    payer_phone: Mapped[str | None] = mapped_column(String(20))  # as shown; may be partly masked
+    received_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    status: Mapped[MpesaSmsStatus] = mapped_column(_enum(MpesaSmsStatus))
+    detail: Mapped[str | None] = mapped_column(String(300))
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id"))
+    suggested_customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id"))
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payments.id"))
+    message_text: Mapped[str] = mapped_column(String(1000))  # M-Pesa balance redacted
+    submitted_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
 # --------------------------------------------------------------------------- reminders
 
 
@@ -494,6 +536,7 @@ TENANT_TABLES = [
     "payment_allocations",
     "receipts",
     "payment_requests",
+    "mpesa_sms_messages",
     "reminder_templates",
     "reminder_history",
     "notifications",

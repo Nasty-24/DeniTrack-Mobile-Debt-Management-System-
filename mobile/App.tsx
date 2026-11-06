@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
@@ -12,6 +12,8 @@ import { SessionProvider, useSession } from './src/hooks/useSession';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ApiError } from './src/services/apiClient';
 import { shouldShowSplashOnResume } from './src/services/appLifecycle';
+import { updateBackgroundTask } from './src/services/backgroundSync';
+import { runPhoneTasks, smsAvailable } from './src/services/phoneSms';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 
 void SplashScreen.preventAutoHideAsync();
@@ -26,6 +28,39 @@ const queryClient = new QueryClient({
     mutations: { retry: false },
   },
 });
+
+/**
+ * On a phone switched on for it (Settings → This phone): records M-Pesa payments from SMS and
+ * sends due reminder SMS when the app opens and every minute while it is open.
+ */
+function PhoneAutomation() {
+  const { status, businessId, isManager } = useSession();
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (status !== 'signedIn' || !businessId || !isManager || !smsAvailable) return;
+    let cancelled = false;
+    const run = async () => {
+      const s = await runPhoneTasks({ businessId, isManager });
+      if (!cancelled && s && (s.recorded || s.needsReview || s.remindersSent)) {
+        await qc.invalidateQueries({ queryKey: [businessId] });
+      }
+    };
+    void updateBackgroundTask().catch(() => undefined);
+    void run();
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void run();
+    }, 60_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void run();
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [status, businessId, isManager, qc]);
+  return null;
+}
 
 /**
  * Shows the branded launch screen until the session has been restored, and again each time
@@ -55,6 +90,7 @@ function Launch() {
     <>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <RootNavigator />
+      <PhoneAutomation />
       {splashDone ? null : <BrandSplash ready={status !== 'loading'} onDone={done} />}
     </>
   );

@@ -30,9 +30,12 @@ def rows(status=None, channel=None):
 
 
 @pytest.fixture
-def sms():
+def sms(owner):
+    """These tests cover sending through the SMS gateway; phone sending is in test_phone_sms.py."""
     s = messaging.MockSms()
     messaging.set_providers(s, messaging.MockPush())
+    r = owner.patch("/settings", {"sms_sender": "provider"})
+    assert r.status_code == 200, r.text
     return s
 
 
@@ -152,10 +155,11 @@ def test_failures_retry_with_backoff_then_alert(owner, sms):
     r = rows(channel="sms")[0]
     assert (r.status.value, r.attempts) == ("failed", 3)
     assert any(n["kind"] == "reminder_failed" for n in owner.get("/notifications").json()["items"])
-    # Manual, safe retry
+    # Manual, safe retry. The retry is due from the real "now", so run the next pass at
+    # 10:00 tomorrow: always later than now and outside quiet hours, whatever time tests run.
     sms.fail_next = 0
     assert owner.post(f"/reminders/{r.id}/retry").status_code == 200
-    run_once(t + timedelta(hours=3, minutes=1))
+    run_once(at_local(10, 1))
     assert rows(channel="sms")[0].status.value == "sent"
 
 

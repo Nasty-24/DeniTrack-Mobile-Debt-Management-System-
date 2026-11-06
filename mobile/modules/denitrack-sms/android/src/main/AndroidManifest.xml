@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Read M-Pesa confirmations so payments are recorded automatically (only messages from M-PESA are used). -->
+  <uses-permission android:name="android.permission.READ_SMS" />
+  <!-- Send reminder SMS from the phone's own SIM. -->
+  <uses-permission android:name="android.permission.SEND_SMS" />
+  <uses-feature android:name="android.hardware.telephony" android:required="false" />
+</manifest>

@@ -17,6 +17,7 @@ import { api, newIdempotencyKey } from '../services/api';
 import { ApiError } from '../services/apiClient';
 import { expectExternalActivity } from '../services/appLifecycle';
 import { LOCAL_PREFIX } from '../services/outbox';
+import { SendReminderButton } from './MpesaScreens';
 import { colors, space } from '../theme/tokens';
 import type { Customer } from '../types/api';
 import { dueLabel, formatDate, formatDateTime } from '../utils/dates';
@@ -292,6 +293,11 @@ export function CustomerProfileScreen({ route, navigation }: AppScreenProps<'Cus
         <Row style={{ marginTop: space.lg }} gap={space.md}>
           <Button title="Record payment" style={{ flex: 1 }} disabled={isZero(cust.outstanding_balance)} onPress={() => navigation.navigate('RecordPayment', { customerId })} />
           <Button title="New debt" variant="secondary" style={{ flex: 1 }} onPress={() => navigation.navigate('DebtForm', { customerId, customerName: cust.name })} />
+        </Row>
+      ) : null}
+      {!archived && cust.sms_opt_in && isPositive(cust.outstanding_balance) ? (
+        <Row style={{ marginTop: space.md }}>
+          <SendReminderButton customerId={customerId} name={cust.name} />
         </Row>
       ) : null}
 

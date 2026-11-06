@@ -36,6 +36,7 @@ export type AppStackParamList = {
   BusinessSetup: undefined;
   ChangePassword: { forced?: boolean } | undefined;
   SyncQueue: undefined;
+  MpesaMessages: undefined;
 };
 
 export type AppScreenProps<T extends keyof AppStackParamList> = NativeStackScreenProps<AppStackParamList, T>;

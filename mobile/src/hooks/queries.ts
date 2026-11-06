@@ -12,6 +12,7 @@ import type {
   DashboardSummary,
   Debt,
   DebtDetail,
+  MpesaSms,
   Page,
   Payment,
   Receipt,
@@ -90,6 +91,8 @@ export const useReceipt = (paymentId: string) =>
 
 export const useReminders = (params: Record<string, string | undefined>) =>
   useBizQuery<Page<Reminder>>(['reminders'], '/reminders', params);
+export const useMpesaMessages = (status?: string) =>
+  useBizQuery<Page<MpesaSms>>(['mpesa-sms'], '/mpesa-sms', { limit: 100, status }, { cacheable: false });
 export const useTemplates = () => useBizQuery<ReminderTemplate[]>(['templates'], '/reminder-templates');
 export const useNotifications = () => useBizQuery<Page<AppNotification>>(['notifications'], '/notifications');
 export const useAuditLog = (params: Record<string, string | undefined>) =>

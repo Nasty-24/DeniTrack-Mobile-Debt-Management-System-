@@ -110,6 +110,12 @@ Every debt response includes the derived `total_due, paid, pending_verification,
 | GET | `/reminders` | History; filters `status, channel, customer_id, debt_id` |
 | POST | `/reminders/run` | Plan and send due reminders now |
 | POST | `/reminders/{id}/retry` | Re-queue a failed reminder (balance re-checked before sending) |
+| GET | `/reminders/phone-queue` | Owner/admin phone: due reminder SMS to send from its SIM, each reserved for 15 minutes (quiet hours, opt-out, weekly limit applied) |
+| POST | `/reminders/{id}/phone-result` | `{sent, error}`: the phone reports the outcome; safe to repeat |
+| POST | `/reminders/manual` | `{customer_id, channel: sms|whatsapp}`: a reminder to send now, with the message, phone and (WhatsApp) a `wa.me` link |
+| POST | `/mpesa-sms` | Owner/admin phone: up to 100 M-Pesa SMS `{sender, body, received_at}`; each is applied, confirms a typed-in code, or waits for review |
+| GET | `/mpesa-sms` | M-Pesa messages and outcomes; filter `status` (`needs_review`, `applied`, ...) |
+| POST | `/mpesa-sms/{id}/assign`, `/mpesa-sms/{id}/dismiss` | Record an unmatched payment for a chosen customer, or mark it as not a debt payment |
 | GET | `/dashboard` | Totals, due in 7 days, recent payments and debts |
 | GET | `/reports/{name}` | `collections` (`group_by=day|week|month`), `credit_issued`, `aging`, `customer_balances`, `settlement`, `employee_activity`, `exceptions`. `start`, `end` (defaults: month to date; max 3 years) |
 | GET | `/reports/{name}/export?format=csv|pdf` | Collections, credit issued, aging, customer balances, employee activity. Exports are audited |

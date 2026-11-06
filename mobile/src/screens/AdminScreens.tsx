@@ -22,6 +22,8 @@ import { colors, space } from '../theme/tokens';
 import type { Business, BusinessSettings, PaymentMethod, ReminderTemplate } from '../types/api';
 import { formatDateTime } from '../utils/dates';
 import { normalizeKenyanPhone } from '../utils/phone';
+import { runPhoneTasks, smsAvailable } from '../services/phoneSms';
+import { PhoneSmsSettings } from './MpesaScreens';
 import { changePasswordSchema, paymentMethods, staffSchema, type StaffForm } from '../validation/schemas';
 
 // --------------------------------------------------------------------------- More menu
@@ -31,13 +33,14 @@ export function MoreScreen() {
   const { isManager, role, business, memberships, selectBusiness } = useSession();
   const notes = useNotifications();
   const unread = notes.data?.data.items.filter((n) => !n.read_at).length ?? 0;
-  type MenuRoute = 'Notifications' | 'OverdueDebts' | 'UpcomingPayments' | 'Reports' | 'Reminders' | 'Staff' | 'AuditLog' | 'BusinessSetup' | 'Settings';
+  type MenuRoute = 'Notifications' | 'OverdueDebts' | 'UpcomingPayments' | 'Reports' | 'Reminders' | 'MpesaMessages' | 'Staff' | 'AuditLog' | 'BusinessSetup' | 'Settings';
   const items: { title: string; subtitle: string; to: MenuRoute; show: boolean }[] = [
     { title: 'Notifications', subtitle: unread ? `${unread} unread` : 'Alerts about dues and payments', to: 'Notifications', show: true },
     { title: 'Overdue debts', subtitle: 'Debts past their agreed date', to: 'OverdueDebts', show: true },
     { title: 'Upcoming payments', subtitle: 'Due in the next 14 days', to: 'UpcomingPayments', show: true },
     { title: 'Reports', subtitle: 'Collections, aging, exports', to: 'Reports', show: true },
     { title: 'Reminders', subtitle: 'Schedule, templates and history', to: 'Reminders', show: true },
+    { title: 'M-Pesa messages', subtitle: 'Payments read from SMS, and any to match', to: 'MpesaMessages', show: isManager },
     { title: 'Staff', subtitle: 'Who can use this business', to: 'Staff', show: isManager },
     { title: 'Audit log', subtitle: 'Every financial change, who and when', to: 'AuditLog', show: isManager },
     { title: 'Business setup', subtitle: 'Details, payment methods, permissions', to: 'BusinessSetup', show: isManager },
@@ -80,10 +83,11 @@ export function RemindersScreen() {
 }
 
 function ReminderHistory({ canRetry }: { canRetry: boolean }) {
+  const { businessId, isManager } = useSession();
   const [status, setStatus] = useState<string>('all');
   const q = useReminders(status === 'all' ? {} : { status });
   const retry = useBizMutation<{ id: string }, unknown>('post', (b) => `/reminders/${b.id}/retry`);
-  const run = useBizMutation<object, { planned: number; sent: number }>('post', () => '/reminders/run');
+  const run = useBizMutation<object, { planned: number; sent: number; waiting_for_phone: number }>('post', () => '/reminders/run');
   return (
     <>
       <ChoiceChips label="Status" value={status} onChange={setStatus} options={[{ value: 'all', label: 'All' }, { value: 'sent', label: 'Sent' }, { value: 'queued', label: 'Queued' }, { value: 'failed', label: 'Failed' }, { value: 'skipped', label: 'Skipped' }]} />
@@ -95,7 +99,14 @@ function ReminderHistory({ canRetry }: { canRetry: boolean }) {
           onPress={async () => {
             try {
               const r = await run.mutateAsync({});
-              Alert.alert('Reminders', `${r.planned} planned, ${r.sent} sent.`);
+              const phone = businessId ? await runPhoneTasks({ businessId, isManager }) : null;
+              const fromPhone = phone
+                ? ` ${phone.remindersSent} SMS sent from this phone.`
+                : r.waiting_for_phone
+                  ? ` ${r.waiting_for_phone} SMS waiting for the owner’s phone to send.`
+                  : '';
+              Alert.alert('Reminders', `${r.planned} planned, ${r.sent} sent.${fromPhone}`);
+              void q.refetch();
             } catch (e) {
               Alert.alert('Could not run reminders', errorMessage(e));
             }
@@ -111,7 +122,7 @@ function ReminderHistory({ canRetry }: { canRetry: boolean }) {
             <View key={r.id} style={{ padding: space.lg, gap: space.xs }}>
               {i > 0 ? <Divider /> : null}
               <Row style={{ justifyContent: 'space-between' }}>
-                <AppText variant="bodyStrong">{r.channel === 'sms' ? 'SMS to customer' : r.channel === 'in_app' ? 'Staff alert' : r.channel}</AppText>
+                <AppText variant="bodyStrong">{r.channel === 'sms' ? 'SMS to customer' : r.channel === 'whatsapp' ? 'WhatsApp to customer' : r.channel === 'in_app' ? 'Staff alert' : r.channel}</AppText>
                 <Badge label={r.status} tone={r.status === 'sent' ? 'success' : r.status === 'failed' ? 'danger' : r.status === 'queued' ? 'warning' : 'neutral'} />
               </Row>
               <AppText variant="caption" color={colors.inkMuted}>
@@ -157,7 +168,25 @@ function ReminderScheduleForm({ s, canEdit }: { s: BusinessSettings; canEdit: bo
     <Card>
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <ToggleRow label="Automatic reminders" value={s.reminders_enabled} onChange={(v) => canEdit && save.mutate({ reminders_enabled: v })} />
-      <ToggleRow label="SMS to customers" description="Sent through the business's SMS provider" value={s.reminder_channels.includes('sms')} onChange={() => canEdit && toggleChannel('sms')} />
+      <ToggleRow
+        label="SMS to customers"
+        description={s.sms_sender === 'phone' ? 'Sent as normal SMS from the owner’s phone (Settings → This phone)' : 'Sent through the SMS provider'}
+        value={s.reminder_channels.includes('sms')}
+        onChange={() => canEdit && toggleChannel('sms')}
+      />
+      {s.reminder_channels.includes('sms') ? (
+        <View style={{ marginVertical: space.sm }}>
+          <SegmentedControl
+            label="Send SMS from"
+            value={s.sms_sender}
+            onChange={(v) => canEdit && save.mutate({ sms_sender: v })}
+            options={[
+              { value: 'phone', label: 'Owner’s phone' },
+              { value: 'provider', label: 'SMS provider' },
+            ]}
+          />
+        </View>
+      ) : null}
       <ToggleRow label="In-app alerts to staff" value={s.reminder_channels.includes('in_app')} onChange={() => canEdit && toggleChannel('in_app')} />
       <ToggleRow label="Push notifications to staff" value={s.reminder_channels.includes('push')} onChange={() => canEdit && toggleChannel('push')} />
       <View style={{ height: space.lg }} />
@@ -314,6 +343,7 @@ export function NotificationsScreen() {
                   if (!n.read_at) await api.post(bizPath(businessId!, `/notifications/${n.id}/read`)).catch(() => undefined);
                   if (n.entity_type === 'debt' && n.entity_id) navigation.navigate('DebtDetail', { debtId: n.entity_id });
                   else if (n.entity_type === 'payment' && n.entity_id) navigation.navigate('PaymentDetail', { paymentId: n.entity_id });
+                  else if (n.entity_type === 'mpesa_sms') navigation.navigate('MpesaMessages');
                   void q.refetch();
                 }}
               />
@@ -342,6 +372,9 @@ const ACTION_LABEL: Record<string, string> = {
   'staff.added': 'Staff added',
   'staff.updated': 'Staff changed',
   'report.exported': 'Report exported',
+  'mpesa_sms.assigned': 'M-Pesa payment matched',
+  'mpesa_sms.dismissed': 'M-Pesa payment set aside',
+  'reminder.manual': 'Reminder sent',
 };
 
 export function AuditLogScreen() {
@@ -444,8 +477,9 @@ function BusinessDetailsForm({ business, isOwner }: { business: Business; isOwne
 
 export function SettingsScreen() {
   const navigation = useNavigation();
-  const { user, signOut } = useSession();
+  const { user, signOut, isManager } = useSession();
   const { preference, setPreference } = useTheme();
+  const smsSection = isManager && smsAvailable;
   const { pendingCount, failedCount, lastSyncAt, online, syncNow, syncing } = useOutbox();
   const health = useQuery({
     queryKey: ['health'],
@@ -491,6 +525,13 @@ export function SettingsScreen() {
           {preference === 'system' ? 'Follows your phone’s light or dark setting.' : `Always ${preference}.`}
         </AppText>
       </Card>
+
+      {smsSection ? (
+        <>
+          <SectionHeader title="This phone" />
+          <PhoneSmsSettings />
+        </>
+      ) : null}
 
       <SectionHeader title="Sync and backup" />
       <Card>

@@ -5,6 +5,15 @@
 jest.mock('@react-native-community/netinfo', () => require('@react-native-community/netinfo/jest/netinfo-mock.js'));
 jest.mock('react-native-keyboard-controller', () => require('react-native-keyboard-controller/jest'));
 jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn(async () => undefined) }));
+jest.mock('expo-task-manager', () => ({
+  defineTask: jest.fn(),
+  isTaskRegisteredAsync: jest.fn(async () => false),
+}));
+jest.mock('expo-background-task', () => ({
+  BackgroundTaskResult: { Success: 1, Failed: 2 },
+  registerTaskAsync: jest.fn(async () => undefined),
+  unregisterTaskAsync: jest.fn(async () => undefined),
+}));
 
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();

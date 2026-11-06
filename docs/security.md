@@ -10,6 +10,8 @@
 | Revocation | Logout, logout-all, password change and password reset revoke sessions immediately (access tokens are checked against the session row) | `api/auth.py` | yes |
 | Account recovery | Single-use, 30-minute reset codes (hashed at rest), sent by SMS; the response never reveals whether an account exists | `api/auth.py` | yes |
 | Staff onboarding | Temporary passwords force a change at first sign-in | `api/business.py`, mobile `AppFlow` | yes |
+| M-Pesa SMS reading | Off unless an owner/admin switches it on for that phone. The app reads only messages from the sender M-PESA, from the moment it is switched on; ordinary numbers cannot pose as M-Pesa. Only owners/admins may submit them; a payment is recorded only on a phone **and** name match; transaction codes are unique per business; the owner's M-Pesa balance is redacted before storing | `services/mpesa_sms.py`, `modules/denitrack-sms` | yes (parser, matching, duplicates, roles, tenant isolation) |
+| Reminder SMS from the phone | Reminders are reserved for one phone at a time and remembered on the phone once sent, so a lost report never causes a second SMS; opt-out, quiet hours and the weekly limit are applied by the server | `services/reminders.py`, mobile `services/phoneSms.ts` | yes |
 | Authorisation | Role guards (owner / admin / cashier) on every privileged action | `api/deps.py`, services | yes |
 | Tenant isolation | Business id from the URL accepted only with an active membership (404 otherwise); every query filters by `business_id`; PostgreSQL RLS as a second layer | `api/deps.py`, migration `0002` | yes, including RLS under a non-superuser role |
 | IDOR | UUID ids; every lookup is `id AND business_id` | services | yes |
@@ -19,7 +21,7 @@
 | Errors | Structured `{error:{code,message,details}}`; no stack traces or internals returned | `errors.py` | yes |
 | Transport | HTTPS required in production (reverse proxy); Android cleartext only allowed when the build points at an `http://` development server | `app.config.js`, deployment | config |
 | Headers | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Cache-Control: no-store` on API responses | `main.py` | yes |
-| Secrets | Environment only; production refuses to start with default JWT secret, SQLite, or default callback token | `config.py` | manual |
+| Secrets | Environment only; production refuses to start with SQLite, or with a default or `.env.example` placeholder JWT secret, callback token or database password | `config.py` | `test_config.py` |
 | Logging | Messages containing password/token/API-key keywords are redacted; no request bodies logged | `main.py` | manual |
 | Mobile storage | Tokens in Android Keystore / iOS Keychain (`expo-secure-store`, this-device-only); local database encrypted with SQLCipher using a random 256-bit key held in the keystore; all local data wiped on sign-out; `allowBackup=false` | `storage/`, `database/`, `app.json` | partly (logic tested; encryption needs a device build) |
 | M-Pesa | Secret callback URL token (constant-time compare) + strict parsing + must match a request we created + amount/phone match + independent STK status query before posting | `services/provider_events.py` | yes (mock provider) |

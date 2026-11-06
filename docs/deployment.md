@@ -69,9 +69,47 @@ modules need a development build.
 5. Health check: `GET /api/v1/health` returns database status and integration modes
    (`mock` / `sandbox` / `production`).
 
+The API refuses to start in production while `DENITRACK_JWT_SECRET`, `DENITRACK_MPESA_CALLBACK_TOKEN` or
+the database password still has a default or `change-me` value from `.env.example`.
+
+### On an app platform (e.g. PrimeCloud)
+
+Platforms that build from GitHub and run managed PostgreSQL need one app and one database. The
+reminder worker is only needed when reminders go through an SMS provider. With reminders sent from the
+owner's phone (the default), the phone's own check plans them.
+
+| Setting | Value |
+|---|---|
+| Source | this repository, branch `main` |
+| Root directory / Dockerfile | `backend` / `backend/Dockerfile` (the Dockerfile's `COPY` paths are relative to `backend/`) |
+| Port | `8000` |
+| Health check path | `/api/v1/health` |
+| Pre-deploy command | `python -m alembic upgrade head` |
+| Start command | empty (the Dockerfile's command, with proxy headers on) |
+| Database binding | env var name `DENITRACK_DATABASE_URL` |
+| Environment | `DENITRACK_ENVIRONMENT=production`; `DENITRACK_JWT_SECRET` and `DENITRACK_MPESA_CALLBACK_TOKEN` as secrets |
+
+Platforms usually provide a plain `postgresql://…` URL, sometimes with pool options such as
+`connection_limit`. The API accepts it as given: it selects the psycopg driver and drops options libpq
+does not understand.
+
+On a platform with one database user, migrations and the API share that user. Row-level security still
+applies to it (the tables use `FORCE ROW LEVEL SECURITY`) unless the user is a superuser or has
+`BYPASSRLS`. Check in the platform's database shell; both values should be `f`:
+`SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user;`
+If the worker is needed, add a second app from the same source with start command
+`python -m app.workers.scheduler` and no pre-deploy command.
+
 ### Enabling real integrations
 
-**SMS (Africa's Talking).** Create an account, register a sender ID, then set
+**SMS from the owner's phone (default).** Nothing to configure on the server. Reminder SMS wait for the
+owner's phone, which collects them (`GET /reminders/phone-queue`), sends them from its SIM and reports
+back. Turn it on in the app under Settings → This phone. The same section turns on reading M-Pesa
+messages. Both need the Android app (permissions READ_SMS and SEND_SMS, declared by
+`mobile/modules/denitrack-sms`). Google Play only allows these permissions after a policy review, so
+distribute the APK directly or apply for the exception before a Play Store release.
+
+**SMS (Africa's Talking), optional.** Choose "SMS provider" under Reminders → Schedule → Send SMS from. Create an account, register a sender ID, then set
 `DENITRACK_SMS_MODE=sandbox` (test) or `production`, plus `DENITRACK_SMS_USERNAME`,
 `DENITRACK_SMS_API_KEY` and `DENITRACK_SMS_SENDER_ID`. Send a reminder from the Reminders
 screen ("Check and send due reminders now") and confirm delivery in the Africa's Talking dashboard.
@@ -141,6 +179,13 @@ cd android
 ./gradlew bundleRelease          # AAB for Google Play: app/build/outputs/bundle/release/
 ```
 
+Release builds are shrunk by R8. `app.json` adds one keep rule through `expo-build-properties`:
+`-keep class * extends androidx.room.RoomDatabase { <init>(); }`. WorkManager (used by
+`expo-background-task`) creates its database through that constructor. Room 2.6.1's own rule keeps the
+class but not the constructor, so without this line the release app crashes on launch with
+`NoSuchMethodException: androidx.work.impl.WorkDatabase_Impl.<init>`. Debug builds are not shrunk and do
+not show the problem. The line can go once the build resolves Room 2.7 or later.
+
 ### Splash screen
 
 The splash shows the app icon. `mobile/assets/splash-icon.png` is built from
@@ -164,7 +209,14 @@ development machine):
    new Android CLI. Its bundled ninja 1.12.1 understands long paths; the default CMake 3.22.1
    (and 3.30.5) ship ninja 1.10.2, which does not.
 3. **Build from a short real folder**, e.g. a copy of `mobile/` (without `node_modules` and
-   `android/`) in `C:\dt\mobile`, then `npm ci` there.
+   `android/`) in `C:\dt\mobile`, then `npm ci` there. Exclude only the *top-level* `android/`:
+   `mobile/modules/denitrack-sms/android/` is source code (robocopy's `/XD android` would skip it too,
+   so pass full paths to `/XD`).
+
+Don't start adb (or leave a shell) inside `android/`. `expo prebuild` deletes and recreates that folder,
+and Windows refuses ("EBUSY: resource busy or locked") while any running program, such as an adb server
+started from there, has it as its current folder. Run `adb kill-server`, then start adb again from
+another folder.
 
 The config plugin `mobile/plugins/withWindowsLongPathBuild.js` (registered in `app.json`)
 then makes every native module use CMake 4.1.2 with `CMAKE_POLICY_VERSION_MINIMUM=3.5`

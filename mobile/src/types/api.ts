@@ -57,6 +57,8 @@ export interface BusinessSettings {
   cashier_can_view_reports: boolean;
   payment_methods: PaymentMethod[];
   receipt_footer: string | null;
+  /** 'phone': reminder SMS go from the owner's phone; 'provider': from the SMS gateway. */
+  sms_sender: 'phone' | 'provider';
 }
 
 export interface Customer {
@@ -208,6 +210,27 @@ export interface DashboardSummary {
     description: string;
     created_at: string;
   }[];
+}
+
+export type MpesaSmsStatus = 'applied' | 'confirmed' | 'already_recorded' | 'needs_review' | 'dismissed';
+
+/** An M-Pesa "you have received" SMS read on the owner's phone, and what was done with it. */
+export interface MpesaSms {
+  id: string;
+  transaction_code: string;
+  amount: string;
+  payer_name: string;
+  payer_phone: string | null;
+  received_at: string;
+  status: MpesaSmsStatus;
+  detail: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  suggested_customer_id: string | null;
+  suggested_customer_name: string | null;
+  payment_id: string | null;
+  created_at: string;
+  resolved_at: string | null;
 }
 
 export interface Reminder {

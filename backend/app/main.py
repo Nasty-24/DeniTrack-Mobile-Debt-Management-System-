@@ -4,7 +4,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import auth, business, customers, debts, integrations, payments, reminders, reports, sync
+from app.api import auth, business, customers, debts, integrations, mpesa_sms, payments, reminders, reports, sync
 from app.config import get_settings
 from app.db import engine
 from app.errors import install_error_handlers
@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
         return response
 
     api = APIRouter(prefix="/api/v1")
-    for r in (auth, business, customers, debts, payments, reminders, reports, sync, integrations):
+    for r in (auth, business, customers, debts, payments, mpesa_sms, reminders, reports, sync, integrations):
         api.include_router(r.router)
 
     @api.get("/health", tags=["health"])

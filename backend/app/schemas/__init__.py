@@ -1,7 +1,7 @@
 """Request/response schemas. Money is serialised as a decimal string (e.g. "1500.00")."""
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Generic, Literal, TypeVar
 
@@ -143,6 +143,7 @@ class SettingsOut(ORM):
     cashier_can_view_reports: bool
     payment_methods: list[str]
     receipt_footer: str | None
+    sms_sender: str
 
 
 class SettingsUpdate(BaseModel):
@@ -156,6 +157,7 @@ class SettingsUpdate(BaseModel):
     cashier_can_view_reports: bool | None = None
     payment_methods: list[PaymentMethod] | None = None
     receipt_footer: str | None = Field(default=None, max_length=300)
+    sms_sender: Literal["phone", "provider"] | None = None
 
 
 class StaffCreate(BaseModel):
@@ -434,6 +436,82 @@ class ReminderOut(ORM):
     last_error: str | None
     sent_at: datetime | None
     created_at: datetime
+
+
+class ManualReminderIn(BaseModel):
+    customer_id: uuid.UUID
+    channel: Literal["sms", "whatsapp"]
+
+
+class PhoneSmsOut(BaseModel):
+    """A reminder for the phone to send itself (SMS from its own SIM, or via WhatsApp)."""
+
+    reminder_id: uuid.UUID
+    customer_name: str
+    phone: str
+    message: str
+    whatsapp_url: str | None = None
+
+
+class PhoneResultIn(BaseModel):
+    sent: bool
+    error: str | None = Field(default=None, max_length=300)
+
+
+# --------------------------------------------------------------------------- M-Pesa SMS
+
+
+class MpesaSmsIn(BaseModel):
+    sender: str = Field(max_length=32)
+    body: str = Field(min_length=10, max_length=1000)
+    received_at: datetime
+
+    @field_validator("received_at")
+    @classmethod
+    def _utc(cls, v: datetime) -> datetime:
+        return v if v.tzinfo else v.replace(tzinfo=UTC)
+
+
+class MpesaSmsBatchIn(BaseModel):
+    messages: list[MpesaSmsIn] = Field(min_length=1, max_length=100)
+
+
+class MpesaSmsResultOut(BaseModel):
+    status: str
+    code: str | None = None
+    amount: MoneyOut | None = None
+    customer_name: str | None = None
+    detail: str | None = None
+
+
+class MpesaSmsBatchOut(BaseModel):
+    results: list[MpesaSmsResultOut]
+
+
+class MpesaSmsOut(BaseModel):
+    id: uuid.UUID
+    transaction_code: str
+    amount: MoneyOut
+    payer_name: str
+    payer_phone: str | None
+    received_at: datetime
+    status: str
+    detail: str | None
+    customer_id: uuid.UUID | None
+    customer_name: str | None = None
+    suggested_customer_id: uuid.UUID | None
+    suggested_customer_name: str | None = None
+    payment_id: uuid.UUID | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class MpesaSmsAssignIn(BaseModel):
+    customer_id: uuid.UUID
+
+
+class MpesaSmsDismissIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=300)
 
 
 class NotificationOut(ORM):
