@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { useCustomers } from '../hooks/queries';
@@ -7,6 +7,7 @@ import { LOCAL_PREFIX } from '../services/outbox';
 import { colors, space } from '../theme/tokens';
 import { formatKES, isPositive } from '../utils/money';
 import { formatPhone } from '../utils/phone';
+import { ContactResults, type NewPerson } from './ContactResults';
 import { LoadingState } from './states';
 import { AppText, Button, Card, Divider, ListRow, TextField } from './ui';
 
@@ -15,15 +16,26 @@ export interface PickedCustomer {
   name: string;
 }
 
-/** Search-and-select for forms. Includes customers created offline that are waiting to sync. */
+export type PickerValue = PickedCustomer | NewPerson;
+
+export function isNewPerson(v: PickerValue | null): v is NewPerson {
+  return v !== null && 'kind' in v && v.kind === 'new';
+}
+
+/**
+ * Search-and-select for forms. Includes customers created offline that are waiting to sync.
+ * With `onPickNew`, people from the phone's contacts are listed too ("From your phone").
+ */
 export function CustomerPicker({
   value,
   onChange,
+  onPickNew,
   error,
   owingOnly = false,
 }: {
-  value: PickedCustomer | null;
+  value: PickerValue | null;
   onChange: (c: PickedCustomer | null) => void;
+  onPickNew?: (p: NewPerson) => void;
   error?: string;
   owingOnly?: boolean;
 }) {
@@ -35,6 +47,24 @@ export function CustomerPicker({
     return () => clearTimeout(t);
   }, [query]);
   const q = useCustomers({ q: debounced || undefined, balance: owingOnly ? 'outstanding' : 'any', status: 'active', sort: owingOnly ? 'balance' : 'name' });
+  const items = useMemo(() => q.data?.data.items ?? [], [q.data]);
+  const knownPhones = useMemo(() => new Set(items.map((c) => c.phone)), [items]);
+
+  if (isNewPerson(value)) {
+    return (
+      <Card style={{ marginBottom: space.lg }}>
+        <AppText variant="caption" color={colors.inkMuted}>
+          Customer
+        </AppText>
+        <AppText variant="heading">{value.name}</AppText>
+        <AppText color={colors.inkMuted}>{formatPhone(value.phone)}</AppText>
+        <AppText variant="caption" color={colors.warning}>
+          New customer · added when you save
+        </AppText>
+        <Button title="Change customer" variant="ghost" compact onPress={() => onChange(null)} style={{ alignSelf: 'flex-start', marginTop: space.xs }} />
+      </Card>
+    );
+  }
 
   if (value) {
     return (
@@ -58,7 +88,6 @@ export function CustomerPicker({
     : ops
         .filter((o) => o.kind === 'customer.create' && o.status === 'pending')
         .map((o) => ({ id: `${LOCAL_PREFIX}${o.id}`, name: String(o.payload.name) }));
-  const items = q.data?.data.items ?? [];
 
   return (
     <View style={{ marginBottom: space.lg }}>
@@ -85,6 +114,7 @@ export function CustomerPicker({
           </View>
         ) : null}
       </Card>
+      {onPickNew ? <ContactResults query={debounced} knownPhones={knownPhones} onPick={onPickNew} /> : null}
     </View>
   );
 }

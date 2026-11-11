@@ -80,6 +80,13 @@ export interface Customer {
   open_debts: number;
 }
 
+/** A name M-Pesa shows for this customer's payments, learned when one was matched by hand. */
+export interface MpesaName {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface Installment {
   number: number;
   due_date: string;
@@ -246,10 +253,12 @@ export interface Reminder {
   last_error: string | null;
   sent_at: string | null;
   created_at: string;
+  /** Scheduled reminder, one-tap reminder, or the notice sent when credit is recorded. */
+  purpose: 'scheduled' | 'manual' | 'credit_notice';
 }
 
 export interface ReminderTemplate {
-  kind: 'upcoming' | 'due_today' | 'overdue';
+  kind: 'upcoming' | 'due_today' | 'overdue' | 'credit_notice';
   body: string;
 }
 

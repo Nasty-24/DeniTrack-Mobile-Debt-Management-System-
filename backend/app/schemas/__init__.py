@@ -12,6 +12,7 @@ from pydantic import (
     EmailStr,
     Field,
     PlainSerializer,
+    computed_field,
     field_validator,
 )
 
@@ -251,6 +252,8 @@ class DebtCreate(BaseModel):
     installment_plan: InstallmentPlanIn | None = None
     installments: list[InstallmentIn] | None = Field(default=None, max_length=60)
     client_reference: str | None = Field(default=None, max_length=64)
+    # Send the customer an SMS saying what they took on credit, the amount and the due date.
+    notify_customer: bool = False
 
 
 class DebtUpdate(BaseModel):
@@ -436,6 +439,15 @@ class ReminderOut(ORM):
     last_error: str | None
     sent_at: datetime | None
     created_at: datetime
+    idempotency_key: str = Field(exclude=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def purpose(self) -> Literal["scheduled", "manual", "credit_notice"]:
+        """Why the message was sent (key prefixes are set in app.services.reminders)."""
+        if self.idempotency_key.startswith("notice:"):
+            return "credit_notice"
+        return "manual" if self.idempotency_key.startswith("manual:") else "scheduled"
 
 
 class ManualReminderIn(BaseModel):
@@ -486,6 +498,14 @@ class MpesaSmsResultOut(BaseModel):
 
 class MpesaSmsBatchOut(BaseModel):
     results: list[MpesaSmsResultOut]
+
+
+class MpesaNameOut(ORM):
+    """An M-Pesa name learned for a customer when one of their payments was matched by hand."""
+
+    id: uuid.UUID
+    name: str
+    created_at: datetime
 
 
 class MpesaSmsOut(BaseModel):

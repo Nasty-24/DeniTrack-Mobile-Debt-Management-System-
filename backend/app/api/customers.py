@@ -11,9 +11,9 @@ from app.api.deps import Tenant, get_tenant, idempotency_key, manager_only
 from app.api.presenters import debt_out, idempotent_create, payment_out
 from app.db import get_db
 from app.errors import BusinessRuleError, Conflict, Forbidden, NotFound
-from app.models import Customer, CustomerStatus, Debt, Payment, Role
+from app.models import Customer, CustomerMpesaName, CustomerStatus, Debt, Payment, Role
 from app.repositories.debts import customer_totals, load_views
-from app.schemas import CustomerCreate, CustomerOut, CustomerUpdate, DebtOut, Page, PaymentOut
+from app.schemas import CustomerCreate, CustomerOut, CustomerUpdate, DebtOut, MpesaNameOut, Page, PaymentOut
 from app.services.common import audit, business_today, next_number, normalize_name, normalize_phone, snapshot
 
 router = APIRouter(prefix="/businesses/{business_id}/customers", tags=["customers"])
@@ -256,6 +256,52 @@ def customer_payments(customer_id: uuid.UUID, tenant: Tenant = Depends(get_tenan
         .all()
     )
     return [payment_out(p) for p in rows]
+
+
+def _mpesa_names(db: Session, tenant: Tenant, customer_id: uuid.UUID) -> list[CustomerMpesaName]:
+    return list(
+        db.scalars(
+            select(CustomerMpesaName)
+            .where(CustomerMpesaName.business_id == tenant.business_id, CustomerMpesaName.customer_id == customer_id)
+            .order_by(CustomerMpesaName.created_at.desc())
+        )
+    )
+
+
+@router.get("/{customer_id}/mpesa-names", response_model=list[MpesaNameOut])
+def list_mpesa_names(customer_id: uuid.UUID, tenant: Tenant = Depends(manager_only), db: Session = Depends(get_db)):
+    _get(db, tenant, customer_id)
+    return _mpesa_names(db, tenant, customer_id)
+
+
+@router.post("/{customer_id}/mpesa-names/{name_id}/remove", response_model=list[MpesaNameOut])
+def remove_mpesa_name(
+    customer_id: uuid.UUID, name_id: uuid.UUID, tenant: Tenant = Depends(manager_only), db: Session = Depends(get_db)
+):
+    """Forget a wrongly learned name: payments under it no longer point to this customer."""
+    c = _get(db, tenant, customer_id)
+    learned = db.scalar(
+        select(CustomerMpesaName).where(
+            CustomerMpesaName.id == name_id,
+            CustomerMpesaName.customer_id == c.id,
+            CustomerMpesaName.business_id == tenant.business_id,
+        )
+    )
+    if learned is None:
+        raise NotFound("M-Pesa name not found")
+    audit(
+        db,
+        business_id=tenant.business_id,
+        actor_id=tenant.user.id,
+        action="customer.mpesa_name_removed",
+        entity_type="customer",
+        entity_id=c.id,
+        before={"name": learned.name},
+        ip=tenant.ip,
+    )
+    db.delete(learned)
+    db.commit()
+    return _mpesa_names(db, tenant, customer_id)
 
 
 @router.get("/check/duplicates", response_model=list[CustomerOut])

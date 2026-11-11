@@ -87,6 +87,7 @@ export const debtSchema = z
     installment_count: z.string().trim(),
     installment_frequency: z.enum(['weekly', 'monthly']),
     first_due_date: z.string().trim(),
+    notify_customer: z.boolean(),
   })
   .superRefine((v, ctx) => {
     if (isValidISODate(v.incurred_on) && isValidISODate(v.due_date) && v.due_date < v.incurred_on) {

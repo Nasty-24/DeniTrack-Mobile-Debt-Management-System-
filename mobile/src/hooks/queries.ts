@@ -12,6 +12,7 @@ import type {
   DashboardSummary,
   Debt,
   DebtDetail,
+  MpesaName,
   MpesaSms,
   Page,
   Payment,
@@ -76,6 +77,8 @@ export const useCustomer = (id: string, enabled = true) =>
   useBizQuery<Customer>(['customer', id], `/customers/${id}`, undefined, { enabled: enabled && !!id });
 export const useCustomerDebts = (id: string, enabled = true) =>
   useBizQuery<Debt[]>(['customer', id, 'debts'], `/customers/${id}/debts`, undefined, { enabled: enabled && !!id });
+export const useCustomerMpesaNames = (id: string, enabled = true) =>
+  useBizQuery<MpesaName[]>(['customer', id, 'mpesa-names'], `/customers/${id}/mpesa-names`, undefined, { enabled: enabled && !!id });
 export const useCustomerPayments = (id: string) =>
   useBizQuery<Payment[]>(['customer', id, 'payments'], `/customers/${id}/payments`);
 

@@ -126,7 +126,14 @@ function ReminderHistory({ canRetry }: { canRetry: boolean }) {
                 <Badge label={r.status} tone={r.status === 'sent' ? 'success' : r.status === 'failed' ? 'danger' : r.status === 'queued' ? 'warning' : 'neutral'} />
               </Row>
               <AppText variant="caption" color={colors.inkMuted}>
-                {r.offset_days > 0 ? `${r.offset_days} days before due` : r.offset_days === 0 ? 'On due date' : `${-r.offset_days} days overdue`} · {formatDateTime(r.sent_at ?? r.created_at)}
+                {r.purpose === 'credit_notice'
+                  ? 'Credit recorded'
+                  : r.offset_days > 0
+                    ? `${r.offset_days} days before due`
+                    : r.offset_days === 0
+                      ? 'On due date'
+                      : `${-r.offset_days} days overdue`}{' '}
+                · {formatDateTime(r.sent_at ?? r.created_at)}
               </AppText>
               {r.message ? <AppText variant="caption">{r.message}</AppText> : null}
               {r.last_error ? <AppText variant="caption" color={colors.danger}>{r.last_error}</AppText> : null}
@@ -208,7 +215,7 @@ function ReminderTemplates({ canEdit }: { canEdit: boolean }) {
   return (
     <>
       <AppText color={colors.inkMuted} style={{ marginBottom: space.md }}>
-        Placeholders: {'{customer_name}'}, {'{business_name}'}, {'{amount}'}, {'{due_date}'}, {'{business_phone}'}. Keep messages polite: no threats, and never mention the debt to anyone but the customer.
+        Placeholders: {'{customer_name}'}, {'{business_name}'}, {'{amount}'}, {'{due_date}'}, {'{business_phone}'}. The credit notice can also use {'{items}'} (what was taken) and {'{credit_date}'}. Keep messages polite: no threats, and never mention the debt to anyone but the customer.
       </AppText>
       {q.data.data.map((t) => <TemplateEditor key={t.kind} t={t} canEdit={canEdit} />)}
     </>
@@ -219,7 +226,12 @@ function TemplateEditor({ t, canEdit }: { t: ReminderTemplate; canEdit: boolean 
   const [body, setBody] = useState(t.body);
   const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
   const save = useBizMutation<{ body: string }, ReminderTemplate>('put', () => `/reminder-templates/${t.kind}`);
-  const label = { upcoming: 'Before the due date', due_today: 'On the due date', overdue: 'After the due date' }[t.kind];
+  const label = {
+    credit_notice: 'When credit is recorded',
+    upcoming: 'Before the due date',
+    due_today: 'On the due date',
+    overdue: 'After the due date',
+  }[t.kind];
   return (
     <Card style={{ marginBottom: space.md }}>
       {msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
@@ -575,7 +587,7 @@ export function SettingsScreen() {
       <SectionHeader title="Privacy" />
       <Card>
         <AppText variant="caption" color={colors.inkMuted}>
-          This business uses DeniTrack to record credit it has given and payments received. It stores customers’ names, phone numbers and optional contact details, kept only as long as needed for these records and any legal retention period. Customers can ask the business to see, correct or delete their information, subject to records the law requires to be kept. Reminders go only to the customer’s own number.
+          This business uses DeniTrack to record credit it has given and payments received. It stores customers’ names, phone numbers and optional contact details, kept only as long as needed for these records and any legal retention period. Customers can ask the business to see, correct or delete their information, subject to records the law requires to be kept. Reminders go only to the customer’s own number. To add a customer quickly, staff can search the phone’s contacts; only the person they pick is saved.
         </AppText>
       </Card>
 

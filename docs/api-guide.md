@@ -62,7 +62,7 @@ production). The machine-readable spec is at `/openapi.json`.
 | GET/PATCH | `/settings` | Reminder offsets/channels/quiet hours/weekly cap, cashier permissions, payment methods |
 | GET/POST | `/staff` | POST: `full_name, email, phone?, role (admin|cashier), temporary_password` |
 | PATCH | `/staff/{membership_id}` | `{role?, is_active?}` |
-| GET / PUT | `/reminder-templates`, `/reminder-templates/{upcoming|due_today|overdue}` | Placeholders: `{customer_name} {business_name} {amount} {due_date} {business_phone}` |
+| GET / PUT | `/reminder-templates`, `/reminder-templates/{upcoming|due_today|overdue|credit_notice}` | Placeholders: `{customer_name} {business_name} {amount} {due_date} {business_phone}`; `credit_notice` also `{items} {credit_date}` |
 | GET | `/audit-logs` | Filters: `entity_type, entity_id, actor_user_id, action` (prefix), `date_from, date_to` |
 | GET / POST | `/notifications`, `/notifications/read-all`, `/notifications/{id}/read` | |
 
@@ -76,13 +76,15 @@ production). The machine-readable spec is at `/openapi.json`.
 | POST | `/customers/{id}/archive`, `/restore` | Archived customers keep history but cannot get new debts |
 | GET | `/customers/{id}/debts`, `/customers/{id}/payments` | |
 | GET | `/customers/check/duplicates?name=&phone=` | Pre-check while typing |
+| GET | `/customers/{id}/mpesa-names` | Owner/admin: M-Pesa names learned for this customer (newest first) |
+| POST | `/customers/{id}/mpesa-names/{name_id}/remove` | Owner/admin: forget a wrongly learned name; returns the remaining names. Audited |
 
 ### Debts
 
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/debts` | `status=outstanding|open|partially_paid|overdue|paid|cancelled|disputed|all`, `customer_id`, `due_within_days`, `created_by`, `incurred_from/to`, `q`, `sort=due_date|balance|recent|days_overdue` |
-| POST | `/debts` | **Idempotency-Key required.** `customer_id, description, principal, incurred_on, due_date, terms?, reference?` plus optionally `installment_plan {count, frequency: weekly|monthly, first_due_date}` or `installments [{due_date, amount}]` (must sum to principal) |
+| POST | `/debts` | **Idempotency-Key required.** `customer_id, description, principal, incurred_on, due_date, terms?, reference?` plus optionally `installment_plan {count, frequency: weekly|monthly, first_due_date}` or `installments [{due_date, amount}]` (must sum to principal). `notify_customer: true` queues one SMS to the customer (a credit notice: items, amount, dates), sent like reminder SMS but regardless of quiet hours and the weekly limit; reminder history shows it with `purpose: "credit_notice"` |
 | GET | `/debts/{id}` | Includes `schedule` (per-installment status), `adjustments`, `payments` |
 | PATCH | `/debts/{id}` | `version` + `description/due_date/terms/reference`. Principal cannot be edited; use adjustments |
 | POST | `/debts/{id}/adjustments` | `{amount: "-200.00", reason}`; cannot take `total_due` below what has been paid |
@@ -115,12 +117,25 @@ Every debt response includes the derived `total_due, paid, pending_verification,
 | POST | `/reminders/manual` | `{customer_id, channel: sms|whatsapp}`: a reminder to send now, with the message, phone and (WhatsApp) a `wa.me` link |
 | POST | `/mpesa-sms` | Owner/admin phone: up to 100 M-Pesa SMS `{sender, body, received_at}`; each is applied, confirms a typed-in code, or waits for review |
 | GET | `/mpesa-sms` | M-Pesa messages and outcomes; filter `status` (`needs_review`, `applied`, ...) |
-| POST | `/mpesa-sms/{id}/assign`, `/mpesa-sms/{id}/dismiss` | Record an unmatched payment for a chosen customer, or mark it as not a debt payment |
+| POST | `/mpesa-sms/{id}/assign`, `/mpesa-sms/{id}/dismiss` | Record an unmatched payment for a chosen customer (this also learns the payer's M-Pesa name for that customer), or mark it as not a debt payment |
 | GET | `/dashboard` | Totals, due in 7 days, recent payments and debts |
 | GET | `/reports/{name}` | `collections` (`group_by=day|week|month`), `credit_issued`, `aging`, `customer_balances`, `settlement`, `employee_activity`, `exceptions`. `start`, `end` (defaults: month to date; max 3 years) |
 | GET | `/reports/{name}/export?format=csv|pdf` | Collections, credit issued, aging, customer balances, employee activity. Exports are audited |
 | GET | `/sync/changes?since=` | Customers changed since, plus all outstanding or changed debts, plus `server_time` for the next call |
 | GET | `/health` | Database status and integration modes (`mock` / `sandbox` / `production`) |
+
+### How M-Pesa messages are matched
+
+A payment is applied automatically **only when the phone number matches**. A learned M-Pesa name
+(see `/mpesa-sms/{id}/assign`) counts as the customer's name.
+
+| Message | Result |
+|---|---|
+| Number matches one customer, and their name or a learned M-Pesa name matches | `applied` (a learned name beats a partial name when the number fits several customers) |
+| Number matches, names don't | `needs_review`, that customer suggested when only one has the number |
+| No number (e.g. Pochi la Biashara) or a number no customer has, and exactly one active customer has that learned name | `needs_review` with that customer suggested; never applied automatically |
+| As above, two or more customers have that learned name | `needs_review`, no suggestion |
+| As above, no learned name | `needs_review`; a customer whose full name matches is suggested |
 
 ## Example: recording a payment
 

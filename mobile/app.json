@@ -25,7 +25,8 @@
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.WRITE_CONTACTS"
       ]
     },
     "web": {
@@ -54,6 +55,12 @@
         }
       ],
       "expo-background-task",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "DeniTrack searches your contacts so you can pick a customer quickly."
+        }
+      ],
       [
         "expo-build-properties",
         {

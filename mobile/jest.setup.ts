@@ -58,3 +58,14 @@ jest.mock('./src/database/localDb', () => {
   };
 });
 
+
+// Icon fonts load through expo-asset at runtime; in tests, icons render as plain elements.
+jest.mock('@expo/vector-icons/Feather', () => 'Feather');
+
+// The phone book: granted by default with no contacts; tests set what they need.
+jest.mock('expo-contacts', () => ({
+  getPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true, canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true, canAskAgain: true })),
+  Contact: { getAllDetails: jest.fn(async () => []) },
+  ContactField: { FULL_NAME: 'fullName', PHONES: 'phones' },
+}));

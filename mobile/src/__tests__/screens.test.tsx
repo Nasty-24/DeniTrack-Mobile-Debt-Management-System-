@@ -1,12 +1,15 @@
 /** Screen-level tests: forms, payment confirmation, offline queueing, dashboard figures. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import * as Contacts from 'expo-contacts';
 import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { wipeLocalData } from '../database/localDb';
+import { CustomerFormScreen, CustomerProfileScreen } from '../screens/CustomerScreens';
 import { DashboardScreen } from '../screens/DashboardScreen';
+import { DebtFormScreen } from '../screens/DebtScreens';
 import { RecordPaymentScreen } from '../screens/PaymentScreens';
 import { SignInScreen } from '../screens/auth/AuthScreens';
 import { api } from '../services/api';
@@ -165,6 +168,287 @@ describe('Record payment', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Review payment' }));
     await fireEvent.press(await screen.findByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByText('A payment with this transaction reference has already been recorded')).toBeTruthy();
+  });
+});
+
+describe('Record debt', () => {
+  const route = { key: 'k', name: 'DebtForm', params: { customerId: 'c1', customerName: 'Achieng Atieno' } } as never;
+
+  async function fillAndSave() {
+    await fireEvent.changeText(screen.getByLabelText('What was taken on credit'), 'Cement 2 bags');
+    await fireEvent.changeText(screen.getByLabelText('Amount'), '2450');
+    await fireEvent.press(screen.getByRole('button', { name: 'Record debt' }));
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalled());
+    return mockOutbox.submit.mock.calls[0][1] as Record<string, unknown>;
+  }
+
+  it('texts the customer about the credit by default', async () => {
+    mockOutbox.submit.mockResolvedValue({ queued: false, result: debt({ id: 'd9' }) });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    const sms = screen.getByRole('switch', { name: 'Send SMS to customer' });
+    expect(sms.props.accessibilityState.checked).toBe(true);
+    expect(await fillAndSave()).toMatchObject({ description: 'Cement 2 bags', principal: '2450.00', notify_customer: true });
+    await waitFor(() => expect(mockNav.replace).toHaveBeenCalledWith('DebtDetail', { debtId: 'd9' }));
+  });
+
+  it('sends no SMS when switched off', async () => {
+    mockOutbox.submit.mockResolvedValue({ queued: false, result: debt({ id: 'd9' }) });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await fireEvent.press(screen.getByRole('switch', { name: 'Send SMS to customer' }));
+    expect(await fillAndSave()).toMatchObject({ notify_customer: false });
+  });
+
+  it('says the SMS waits when the debt is saved offline', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockOutbox.submit.mockResolvedValue({ queued: true, localId: 'local-1' });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await fillAndSave();
+    await waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(alert.mock.calls[0][1]).toMatch(/SMS to the customer goes once it is recorded/);
+  });
+});
+
+describe('Record debt for someone from the phone book', () => {
+  const route = { key: 'k', name: 'DebtForm', params: undefined } as never;
+  const MAMA = { id: '1', fullName: 'Mama Njeri Kibanda', phones: [{ id: 'p1', number: '0712 345 678' }] };
+  const EMPTY_PAGE = { items: [], total: 0, limit: 200, offset: 0 };
+  const duplicate = (details: unknown) =>
+    new ApiError('A customer with the same name or phone number already exists', 409, 'possible_duplicate', details);
+
+  beforeEach(() => {
+    (Contacts.Contact.getAllDetails as jest.Mock).mockResolvedValue([MAMA]);
+    jest
+      .spyOn(api, 'get')
+      .mockImplementation(async (path: string) => (path.endsWith('/settings') ? { cashier_can_register_customers: false } : EMPTY_PAGE) as never);
+  });
+
+  async function pickMama() {
+    await fireEvent.changeText(screen.getByLabelText('Customer'), 'njeri');
+    await fireEvent.press(await screen.findByText('Mama Njeri Kibanda', {}, { timeout: 3000 }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Use this person' }));
+  }
+
+  async function fillAndRecord() {
+    await fireEvent.changeText(screen.getByLabelText('What was taken on credit'), 'Sugar 2kg');
+    await fireEvent.changeText(screen.getByLabelText('Amount'), '300');
+    await fireEvent.press(screen.getByRole('button', { name: 'Record debt' }));
+  }
+
+  const calls = () => mockOutbox.submit.mock.calls as [string, Record<string, unknown>, string, string][];
+
+  it('records a debt for a new contact', async () => {
+    mockOutbox.submit.mockImplementation(async (kind: string) =>
+      kind === 'customer.create' ? { queued: false, result: { id: 'c-new' } } : { queued: false, result: debt({ id: 'd9' }) },
+    );
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await pickMama();
+    expect(screen.getByText('New customer · added when you save')).toBeTruthy();
+    await fillAndRecord();
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalledTimes(2));
+    const [customer, credit] = calls();
+    expect(customer[0]).toBe('customer.create');
+    expect(customer[1]).toEqual({ name: 'Mama Njeri Kibanda', phone: '+254712345678', sms_opt_in: true, allow_duplicate: false });
+    expect(credit[0]).toBe('debt.create');
+    expect(credit[1].customer_id).toBe('c-new');
+    await waitFor(() => expect(mockNav.replace).toHaveBeenCalledWith('DebtDetail', { debtId: 'd9' }));
+  });
+
+  it('queues the customer and the debt together offline', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockOutbox.submit.mockImplementation(async (kind: string) =>
+      kind === 'customer.create' ? { queued: true, localId: 'local:k1' } : { queued: true, localId: 'local:k2' },
+    );
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await pickMama();
+    await fillAndRecord();
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalledTimes(2));
+    expect(calls()[1][1].customer_id).toBe('local:k1');
+    await waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(alert.mock.calls[0][0]).toBe('Saved on this phone');
+  });
+
+  it('uses the existing customer with the same number', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockOutbox.submit
+      .mockRejectedValueOnce(duplicate([{ id: 'c7', name: 'Joseph Otieno', phone: '+254712345678' }]))
+      .mockResolvedValueOnce({ queued: false, result: debt({ id: 'd9' }) });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await pickMama();
+    await fillAndRecord();
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalledTimes(2));
+    expect(calls()[1][1].customer_id).toBe('c7');
+    await waitFor(() =>
+      expect(alert).toHaveBeenCalledWith('Debt recorded', 'Joseph Otieno is already a customer, so the debt was recorded for them.'),
+    );
+  });
+
+  it('asks when only the name matches', async () => {
+    mockOutbox.submit
+      .mockRejectedValueOnce(duplicate([{ id: 'c8', name: 'Mama Njeri Kibanda', phone: '+254700000001' }]))
+      .mockResolvedValueOnce({ queued: false, result: { id: 'c-new' } })
+      .mockResolvedValueOnce({ queued: false, result: debt({ id: 'd9' }) });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await pickMama();
+    await fillAndRecord();
+    expect(await screen.findByText('This may be a customer you already have')).toBeTruthy();
+    expect(mockOutbox.submit).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole('button', { name: 'No, add a new customer' }));
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalledTimes(3));
+    expect(calls()[1][0]).toBe('customer.create');
+    expect(calls()[1][1].allow_duplicate).toBe(true);
+    expect(calls()[2][1].customer_id).toBe('c-new');
+  });
+
+  it('reuses the same customer when saving again', async () => {
+    mockOutbox.submit
+      .mockResolvedValueOnce({ queued: false, result: { id: 'c-new' } })
+      .mockRejectedValueOnce(new ApiError('Check the amount', 422, 'validation_error'))
+      .mockResolvedValueOnce({ queued: false, result: debt({ id: 'd9' }) });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await pickMama();
+    await fillAndRecord();
+    expect(await screen.findByText('Check the amount')).toBeTruthy();
+    expect(screen.queryByText('New customer · added when you save')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Record debt' }));
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalledTimes(3));
+    expect(calls()[2][0]).toBe('debt.create');
+    expect(calls()[2][1].customer_id).toBe('c-new');
+  });
+
+  it('retrying after adding a new customer anyway saves only the debt', async () => {
+    mockOutbox.submit
+      .mockRejectedValueOnce(duplicate([{ id: 'c8', name: 'Mama Njeri Kibanda', phone: '+254700000001' }]))
+      .mockResolvedValueOnce({ queued: false, result: { id: 'c-new' } })
+      .mockRejectedValueOnce(new ApiError('Check the amount', 422, 'validation_error'))
+      .mockResolvedValueOnce({ queued: false, result: debt({ id: 'd9' }) });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await pickMama();
+    await fillAndRecord();
+    await fireEvent.press(await screen.findByRole('button', { name: 'No, add a new customer' }));
+    expect(await screen.findByText('Check the amount')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Record debt' }));
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalledTimes(4));
+    expect(calls()[3][0]).toBe('debt.create');
+    expect(calls()[3][1].customer_id).toBe('c-new');
+  });
+
+  it('shows the server message when the existing customer is archived', async () => {
+    mockOutbox.submit
+      .mockRejectedValueOnce(duplicate([{ id: 'c7', name: 'Joseph Otieno', phone: '+254712345678' }]))
+      .mockRejectedValueOnce(new ApiError('Archived customers cannot receive new credit', 422, 'customer_archived'));
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await pickMama();
+    await fillAndRecord();
+    expect(await screen.findByText('Archived customers cannot receive new credit')).toBeTruthy();
+    expect(screen.getByText('Joseph Otieno')).toBeTruthy(); // the form now shows who the debt was for
+  });
+
+  it("cashiers who can't add customers see no contacts", async () => {
+    Object.assign(mockSession, { role: 'cashier', isManager: false });
+    try {
+      await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+      await fireEvent.changeText(screen.getByLabelText('Customer'), 'njeri');
+      await act(() => new Promise((r) => setTimeout(r, 400)));
+      expect(screen.queryByText('From your phone')).toBeNull();
+    } finally {
+      Object.assign(mockSession, { role: 'owner', isManager: true });
+    }
+  });
+});
+
+describe('Add customer', () => {
+  const MAMA = { id: '1', fullName: 'Mama Njeri Kibanda', phones: [{ id: 'p1', number: '0712 345 678' }] };
+  const newRoute = { key: 'k', name: 'CustomerForm', params: undefined } as never;
+
+  beforeEach(() => {
+    (Contacts.Contact.getAllDetails as jest.Mock).mockResolvedValue([MAMA]);
+    jest.spyOn(api, 'get').mockImplementation(async (path: string) => {
+      if (path.endsWith('/settings')) return { cashier_can_register_customers: false } as never;
+      return {
+        id: 'c1', name: 'Achieng Atieno', phone: '+254712345678', email: null, address: null, notes: null,
+        sms_opt_in: true, version: 1, status: 'active',
+      } as never;
+    });
+  });
+
+  it('fills the name and number from a contact', async () => {
+    await render(wrap(<CustomerFormScreen navigation={mockNav as never} route={newRoute} />));
+    await fireEvent.press(screen.getByRole('button', { name: 'Pick from contacts' }));
+    await fireEvent.changeText(screen.getByLabelText('Search contacts'), 'njeri');
+    await fireEvent.press(await screen.findByText('Mama Njeri Kibanda'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Use this person' }));
+    expect(screen.getByLabelText('Full name or business name').props.value).toBe('Mama Njeri Kibanda');
+    expect(screen.getByLabelText('Phone number').props.value).toBe('0712 345 678');
+    expect(screen.queryByLabelText('Search contacts')).toBeNull();
+  });
+
+  it('is not offered when editing a customer', async () => {
+    const editRoute = { key: 'k', name: 'CustomerForm', params: { customerId: 'c1' } } as never;
+    await render(wrap(<CustomerFormScreen navigation={mockNav as never} route={editRoute} />));
+    await waitFor(() => expect(screen.getByLabelText('Full name or business name').props.value).toBe('Achieng Atieno'));
+    expect(screen.queryByRole('button', { name: 'Pick from contacts' })).toBeNull();
+  });
+
+  it("is not offered to cashiers who can't add customers", async () => {
+    Object.assign(mockSession, { role: 'cashier', isManager: false });
+    try {
+      await render(wrap(<CustomerFormScreen navigation={mockNav as never} route={newRoute} />));
+      await act(() => new Promise((r) => setTimeout(r, 100)));
+      expect(screen.queryByRole('button', { name: 'Pick from contacts' })).toBeNull();
+    } finally {
+      Object.assign(mockSession, { role: 'owner', isManager: true });
+    }
+  });
+});
+
+describe('Customer M-Pesa names', () => {
+  const route = { key: 'k', name: 'CustomerProfile', params: { customerId: 'c1' } } as never;
+  const CUSTOMER = {
+    id: 'c1', customer_number: 'C-00001', name: 'Mama Mboga', phone: '+254722000712', email: null, address: null, notes: null,
+    status: 'active', sms_opt_in: true, created_at: '2026-10-01T08:00:00Z', updated_at: '2026-10-01T08:00:00Z', version: 1,
+    outstanding_balance: '0.00', overdue_amount: '0.00', pending_verification: '0.00', open_debts: 0,
+  };
+  let names: { id: string; name: string; created_at: string }[] = [];
+
+  beforeEach(() => {
+    names = [{ id: 'n1', name: 'NJERI WAMBUI', created_at: '2026-11-01T08:00:00Z' }];
+    jest.spyOn(api, 'get').mockImplementation(async (path: string) => {
+      if (path.endsWith('/mpesa-names')) return names as never;
+      if (path.endsWith('/debts') || path.endsWith('/payments')) return [] as never;
+      return CUSTOMER as never;
+    });
+  });
+
+  it('lists learned names and removes one after confirming', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const post = jest.spyOn(api, 'post').mockResolvedValue([] as never);
+    await render(wrap(<CustomerProfileScreen navigation={mockNav as never} route={route} />));
+    expect(await screen.findByText('NJERI WAMBUI')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Remove NJERI WAMBUI' }));
+    const [title, message, buttons] = alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
+    expect(title).toBe('Remove NJERI WAMBUI?');
+    expect(message).toBe('Payments under this name will no longer suggest Mama Mboga.');
+    await act(async () => buttons.find((b) => b.text === 'Remove')?.onPress?.());
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post.mock.calls[0][0]).toMatch(/\/customers\/c1\/mpesa-names\/n1\/remove$/);
+  });
+
+  it('explains an empty list', async () => {
+    names = [];
+    await render(wrap(<CustomerProfileScreen navigation={mockNav as never} route={route} />));
+    expect(await screen.findByText("Learned when you match one of this customer's M-Pesa payments by hand.")).toBeTruthy();
+  });
+
+  it('is hidden from cashiers', async () => {
+    Object.assign(mockSession, { role: 'cashier', isManager: false });
+    try {
+      await render(wrap(<CustomerProfileScreen navigation={mockNav as never} route={route} />));
+      expect(await screen.findByText('C-00001', { exact: false })).toBeTruthy();
+      expect(screen.queryByText('M-Pesa names')).toBeNull();
+      expect((api.get as jest.Mock).mock.calls.some(([p]) => String(p).endsWith('/mpesa-names'))).toBe(false);
+    } finally {
+      Object.assign(mockSession, { role: 'owner', isManager: true });
+    }
   });
 });
 

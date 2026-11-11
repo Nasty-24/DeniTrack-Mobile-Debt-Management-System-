@@ -46,6 +46,13 @@ Android release signing are in [docs/deployment.md](docs/deployment.md).
   payer matches one customer by phone number **and** name, including Safaricom's masked numbers
   (e.g. 0722***712). Anything else waits under More → M-Pesa messages for an owner to match. The
   SMS also confirms a code a cashier typed in, and a transaction code is never applied twice.
+- Customers added from the phone's contacts often have nicknames, while M-Pesa shows the name on
+  their ID. When an owner matches a payment by hand, that M-Pesa name is learned for the customer,
+  so their next payment from the same number clears on its own. Pochi la Biashara payments show no
+  number and are never applied automatically: the learned customer is pre-selected for one tap
+  (once the Pochi message wording is confirmed against a real message; see Known limitations).
+- When credit is recorded, the customer can get an SMS (on by default) naming what they took, the
+  amount and the due date. It is sent like reminder SMS, but straight away and outside the weekly limit.
 - Overpayments are refused. Posted payments are never edited or deleted (corrections are audited
   reversals and adjustments). Receipt numbers are gapless per business and year.
 - Debt and payment creation require an `Idempotency-Key`; retries and offline replays never double-post.
@@ -64,13 +71,13 @@ The current modes are reported by `GET /api/v1/health` and shown in the app unde
 
 ## Verification results
 
-Run on Windows 11, 29–31 Oct 2026.
+Run on Windows 11, 29 Oct – 10 Nov 2026.
 
 | Check | Result |
 |---|---|
-| Backend tests, SQLite (`pytest`) | **170 passed** (+5 PostgreSQL-only tests skipped) |
-| Backend tests, PostgreSQL (same suite) | **175 passed** |
-| Migrations and row-level security on PostgreSQL (`tests/test_postgres_rls.py`): upgrade → downgrade → upgrade → `alembic check`, cross-tenant reads/writes blocked for a non-superuser role, full API + worker smoke under RLS | **5 passed** |
+| Backend tests, SQLite (`pytest`) | **192 passed** (+6 PostgreSQL-only tests skipped) |
+| Backend tests, PostgreSQL (same suite) | **198 passed** |
+| Migrations and row-level security on PostgreSQL (`tests/test_postgres_rls.py`): upgrade → downgrade → upgrade → `alembic check`, cross-tenant reads/writes blocked for a non-superuser role, full API + worker smoke under RLS | **6 passed** |
 | Backend coverage | 88% of `app/` |
 | `ruff check` + `ruff format --check`, `mypy app` | clean |
 | `pip-audit -r requirements.txt` | no known vulnerabilities |
@@ -78,7 +85,7 @@ Run on Windows 11, 29–31 Oct 2026.
 | Live server smoke (uvicorn + seeded data) | health OK; dashboard totals hand-checked against the seed (outstanding 79,300.00, overdue 28,900.00, collected today 12,000.00, month 44,000.00, pending 3,000.00); PDF export 200 |
 | Mobile `tsc --noEmit` (strict) | clean |
 | Mobile `eslint` (eslint-config-expo, incl. React Compiler rules) | clean |
-| Mobile tests (`jest`) | **143 passed** (money, phone, dates, validation, offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), splash-on-reopen rules, M-Pesa SMS reading, reminder SMS from the phone, one-tap SMS/WhatsApp reminders, M-Pesa matching screen, components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
+| Mobile tests (`jest`) | **181 passed** (money, phone, dates, validation, offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), splash-on-reopen rules, M-Pesa SMS reading, reminder SMS from the phone, one-tap SMS/WhatsApp reminders, M-Pesa matching screen, credit-notice SMS on the debt form, password show/hide, phone-book search and "From your phone" (permissions, landlines, unreadable contacts), recording a debt for a new contact online and offline with duplicate checks, Pick from contacts, learned M-Pesa names on the customer page, components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
 | `expo install --check` | dependencies up to date |
 | Android release APK (`gradlew assembleRelease`) | **built** on Windows (29.5 min): `ke.denitrack.app` 1.0.0, Android 7.0+ (API 24), target API 36, arm64-v8a + x86_64, JS bundle embedded, SQLCipher compiled in; signed with the debug key (test build) |
 
@@ -102,8 +109,9 @@ the default CMake's ninja 1.10.2 does not), and a short real build folder. The c
 CMake switch only on Windows hosts, so Linux/macOS/CI builds are unchanged. The final APK was built
 with no manual edits to the generated `android/` project.
 
-Unused permissions that Expo adds by default (draw over other apps, legacy external storage) are
-blocked in `app.json`. The APK requests internet and network-state access, vibration, and biometrics
+Unused permissions that Expo adds by default (draw over other apps, legacy external storage, and
+changing contacts) are blocked in `app.json`. Reading contacts is asked for the first time staff
+search the phone book for a customer. The APK requests internet and network-state access, vibration, and biometrics
 (from the secure-storage module).
 
 ## Acceptance criteria
@@ -123,7 +131,7 @@ blocked in `app.json`. The APK requests internet and network-state access, vibra
 | 11 | Unauthorised users blocked | Done: role tests |
 | 12 | Businesses isolated | Done: application checks plus PostgreSQL RLS, both tested |
 | 13 | Financial changes auditable | Done: audit log with before/after and reason |
-| 14 | Core workflows tested | Done: 170 backend + 5 PostgreSQL + 143 mobile tests |
+| 14 | Core workflows tested | Done: 192 backend + 6 PostgreSQL + 181 mobile tests |
 | 15 | Mobile app buildable from docs | Done on Windows (release APK built from the documented steps). The Linux CI Android job has not been run yet |
 | 16 | Mock / sandbox / production modes distinct | Done: explicit config, shown in `/health` and the app |
 | 17 | Limitations documented | Done: below and in [security.md](docs/security.md) |
@@ -136,6 +144,8 @@ blocked in `app.json`. The APK requests internet and network-state access, vibra
   receipt share, offline queue, reminder) before giving it to a business.
 - **M-Pesa Daraja and Africa's Talking clients are untested against the real services.** Test them in
   sandbox mode before any production use (steps in deployment.md).
+- **Pochi la Biashara messages are not confirmed yet.** The reader expects the usual "You have received
+  Ksh… from NAME…" wording; a real Pochi message is needed to confirm it, or Pochi payments may be skipped.
 - **SMS features have not been tried on a real phone with real M-Pesa messages yet.** Safaricom changes
   its wording from time to time; check the first payments under More → M-Pesa messages.
 - **Google Play restricts the SMS permissions** (READ_SMS, SEND_SMS). They work in an APK you install

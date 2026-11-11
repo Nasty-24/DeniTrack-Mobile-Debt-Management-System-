@@ -211,13 +211,13 @@ def list_templates(tenant: Tenant = Depends(get_tenant), db: Session = Depends(g
 
 @router.put("/reminder-templates/{kind}", response_model=TemplateOut)
 def update_template(
-    kind: Literal["upcoming", "due_today", "overdue"],
+    kind: Literal["upcoming", "due_today", "overdue", "credit_notice"],
     data: TemplateUpdate,
     tenant: Tenant = Depends(manager_only),
     db: Session = Depends(get_db),
 ):
     try:
-        validate_template(data.body)
+        validate_template(data.body, kind)
     except ValueError as e:
         raise BusinessRuleError(str(e), code="invalid_template") from None
     t = db.scalar(

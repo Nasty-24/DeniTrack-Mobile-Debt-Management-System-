@@ -174,7 +174,8 @@ export function RegisterScreen({ navigation }: AuthScreenProps<'Register'>) {
       <FormField control={control} name="confirm" label="Confirm password" secureTextEntry autoComplete="new-password" />
       <AppText variant="caption" color={colors.inkMuted} style={{ marginBottom: space.lg }}>
         DeniTrack stores your customers’ names, phone numbers and balances to manage credit you have extended. Only
-        your business’s staff can see them. See the privacy notice in Settings.
+        your business’s staff can see them. If you allow it, the app can search your phone’s contacts to add a
+        customer; only the person you pick is saved. See the privacy notice in Settings.
       </AppText>
       <Button title="Create account" onPress={() => void onSubmit()} loading={formState.isSubmitting} />
       <Button title="I already have an account" variant="ghost" onPress={() => navigation.navigate('SignIn')} style={{ marginTop: space.sm }} />

@@ -43,6 +43,7 @@ describe('debt form', () => {
     installment_count: '3',
     installment_frequency: 'monthly' as const,
     first_due_date: '2026-11-01',
+    notify_customer: true,
   };
 
   it('accepts a simple debt', () => expect(debtSchema.safeParse(base).success).toBe(true));

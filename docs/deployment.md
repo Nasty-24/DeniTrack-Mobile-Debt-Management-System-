@@ -100,6 +100,21 @@ applies to it (the tables use `FORCE ROW LEVEL SECURITY`) unless the user is a s
 If the worker is needed, add a second app from the same source with start command
 `python -m app.workers.scheduler` and no pre-deploy command.
 
+#### Connecting the app to the hosted server
+
+1. Take the app's HTTPS address from the platform: its default address, or your custom domain once
+   its certificate is issued. `https://<address>/api/v1/health` must answer with `"status": "ok"`.
+2. On each phone, on the sign-in screen, tap **Change server**, enter `https://<address>` and tap
+   **Check and save**. The phone keeps that address.
+3. For phones you hand out, build the APK with the address built in, so nobody has to type it:
+   `EXPO_PUBLIC_API_URL=https://<address> npx expo prebuild --platform android`, then
+   `./gradlew assembleRelease` (see "Android builds" below). A build with an `https://` default refuses
+   plain-`http` servers.
+4. Data on a test server does not move with the app. Create the business on the hosted server (sign
+   up again there), or restore a database dump into the platform's database if it allows that.
+5. The phone keeps its **This phone** switches (sending SMS, reading M-Pesa). For the new business,
+   M-Pesa reading starts from the first time it runs there, so earlier messages are not read again.
+
 ### Enabling real integrations
 
 **SMS from the owner's phone (default).** Nothing to configure on the server. Reminder SMS wait for the

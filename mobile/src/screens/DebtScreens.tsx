@@ -4,21 +4,24 @@ import { useEffect, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Alert, FlatList, Modal, View } from 'react-native';
 
-import { CustomerPicker, type PickedCustomer } from '../components/CustomerPicker';
+import { CustomerPicker, isNewPerson, type PickerValue } from '../components/CustomerPicker';
 import { DebtStatusBadge, MoneyText, METHOD_LABEL, ProgressBar, VerificationBadge } from '../components/finance';
 import { applyServerErrors, FormField } from '../components/form';
 import { CachedNotice, Screen } from '../components/Screen';
 import { Banner, EmptyState, ErrorState, errorMessage, LoadingState } from '../components/states';
 import { AppText, Button, Card, ChoiceChips, Divider, ListRow, Row, SectionHeader, SegmentedControl, TextField, ToggleRow } from '../components/ui';
-import { useBizMutation, useDebt, useDebts } from '../hooks/queries';
+import { useBizMutation, useDebt, useDebts, useSettings } from '../hooks/queries';
 import { useOutbox } from '../hooks/useOutbox';
 import { useSession } from '../hooks/useSession';
 import type { AppScreenProps } from '../navigation/types';
 import { newIdempotencyKey } from '../services/api';
+import { ApiError } from '../services/apiClient';
+import { runPhoneTasks } from '../services/phoneSms';
 import { colors, space } from '../theme/tokens';
-import type { Debt } from '../types/api';
+import type { Customer, Debt } from '../types/api';
 import { addDaysISO, dueLabel, formatDate, formatDateTime, todayISO } from '../utils/dates';
 import { add, formatKES, isPositive, isValidAmountInput, parseAmountInput, toCents } from '../utils/money';
+import { formatPhone } from '../utils/phone';
 import { debtSchema, type DebtForm } from '../validation/schemas';
 
 // --------------------------------------------------------------------------- list
@@ -116,11 +119,24 @@ export const UpcomingPaymentsScreen = () => <DebtListView initial="upcoming" />;
 
 // --------------------------------------------------------------------------- create
 
+/** The form's customer_id while a person from the phone book is picked; the customer is created on save. */
+const NEW_PERSON_ID = 'new-person';
+
+interface PossibleDuplicate {
+  id: string;
+  name: string;
+  phone: string;
+}
+
 export function DebtFormScreen({ route, navigation }: AppScreenProps<'DebtForm'>) {
   const { submit } = useOutbox();
-  const [customer, setCustomer] = useState<PickedCustomer | null>(
+  const { businessId, isManager } = useSession();
+  const settings = useSettings();
+  const canAddCustomers = isManager || !!settings.data?.data.cashier_can_register_customers;
+  const [customer, setCustomer] = useState<PickerValue | null>(
     route.params?.customerId ? { id: route.params.customerId, name: route.params.customerName ?? 'Selected customer' } : null,
   );
+  const [duplicates, setDuplicates] = useState<PossibleDuplicate[] | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [key] = useState(newIdempotencyKey);
   const today = todayISO();
@@ -138,6 +154,7 @@ export function DebtFormScreen({ route, navigation }: AppScreenProps<'DebtForm'>
       installment_count: '3',
       installment_frequency: 'monthly',
       first_due_date: addDaysISO(today, 30),
+      notify_customer: true,
     },
   });
   const [useInstallments, principal, countText, incurredOn] = useWatch({
@@ -150,16 +167,56 @@ export function DebtFormScreen({ route, navigation }: AppScreenProps<'DebtForm'>
       ? `${count} payments of about ${formatKES(fromCentsApprox(toCents(parseAmountInput(principal)), count))}`
       : null;
 
-  const onSubmit = handleSubmit(async (v) => {
+  /** Saves a person picked from the phone book as a customer. Returns the customer id, or null to stop. */
+  const createCustomer = async (allowDuplicate: boolean): Promise<{ id: string; name: string; note: string | null } | null> => {
+    if (!isNewPerson(customer)) return null;
+    try {
+      const res = await submit<Customer>(
+        'customer.create',
+        { name: customer.name, phone: customer.phone, sms_opt_in: true, allow_duplicate: allowDuplicate },
+        `New customer – ${customer.name}`,
+        customer.key,
+      );
+      return { id: res.queued ? res.localId : res.result.id, name: customer.name, note: null };
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === 'possible_duplicate')) throw e;
+      const matches = (e.details ?? []) as PossibleDuplicate[];
+      const same = matches.find((d) => d.phone === customer.phone);
+      if (!same) {
+        setDuplicates(matches);
+        return null;
+      }
+      return { id: same.id, name: same.name, note: `${same.name} is already a customer, so the debt was recorded for them.` };
+    }
+  };
+
+  const save = async (v: DebtForm, allowDuplicate = false) => {
     setFormError(null);
+    setDuplicates(null);
+    let customerId = v.customer_id;
+    let note: string | null = null;
+    if (isNewPerson(customer)) {
+      try {
+        const created = await createCustomer(allowDuplicate);
+        if (!created) return;
+        ({ id: customerId, note } = created);
+        // From here on the form is for that customer, so saving again sends only the debt.
+        setCustomer({ id: created.id, name: created.name });
+        setValue('customer_id', created.id, { shouldValidate: true });
+      } catch (e) {
+        setFormError(applyServerErrors(e, setError, []));
+        return;
+      }
+    }
     const body: Record<string, unknown> = {
-      customer_id: v.customer_id,
+      customer_id: customerId,
       description: v.description,
       principal: parseAmountInput(v.principal),
       incurred_on: v.incurred_on,
       due_date: v.use_installments ? v.first_due_date : v.due_date,
       terms: v.terms || null,
       reference: v.reference || null,
+      notify_customer: v.notify_customer,
     };
     if (v.use_installments) {
       body.installment_plan = { count: Number(v.installment_count), frequency: v.installment_frequency, first_due_date: v.first_due_date };
@@ -167,26 +224,60 @@ export function DebtFormScreen({ route, navigation }: AppScreenProps<'DebtForm'>
     try {
       const res = await submit<Debt>('debt.create', body, `Debt ${formatKES(String(body.principal))} – ${customer?.name ?? ''}`, key);
       if (res.queued) {
-        Alert.alert('Saved on this phone', 'This debt will be recorded when you are back online. It is not on the server yet.');
+        const sms = v.notify_customer ? ' The SMS to the customer goes once it is recorded.' : '';
+        Alert.alert('Saved on this phone', `This debt will be recorded when you are back online. It is not on the server yet.${sms}`);
         navigation.goBack();
       } else {
+        // If this is the phone that sends SMS, send the credit notice now rather than at the next check.
+        if (v.notify_customer && businessId) void runPhoneTasks({ businessId, isManager }).catch(() => undefined);
+        if (note) Alert.alert('Debt recorded', note);
         navigation.replace('DebtDetail', { debtId: res.result.id });
       }
     } catch (e) {
       setFormError(applyServerErrors(e, setError, ['description', 'principal', 'incurred_on', 'due_date']));
     }
-  });
+  };
+  const onSubmit = handleSubmit((v) => save(v));
 
   return (
     <Screen edges={['bottom']} footer={<Button title="Record debt" onPress={() => void onSubmit()} loading={formState.isSubmitting} />}>
       {formError ? <Banner tone="danger">{formError}</Banner> : null}
+      {duplicates ? (
+        <Banner tone="warning">
+          <AppText variant="bodyStrong">This may be a customer you already have</AppText>
+          {duplicates.map((d) => (
+            <Button
+              key={d.id}
+              title={`Use ${d.name} (${formatPhone(d.phone)})`}
+              variant="ghost"
+              compact
+              onPress={() => {
+                setCustomer({ id: d.id, name: d.name });
+                setValue('customer_id', d.id, { shouldValidate: true });
+                setDuplicates(null);
+              }}
+            />
+          ))}
+          <Button title="No, add a new customer" variant="secondary" compact onPress={() => void handleSubmit((v) => save(v, true))()} />
+        </Banner>
+      ) : null}
       <CustomerPicker
         value={customer}
         error={formState.errors.customer_id?.message}
         onChange={(c) => {
           setCustomer(c);
+          setDuplicates(null);
           setValue('customer_id', c?.id ?? '', { shouldValidate: !!c });
         }}
+        onPickNew={
+          canAddCustomers
+            ? (p) => {
+                setCustomer(p);
+                setDuplicates(null);
+                setValue('customer_id', NEW_PERSON_ID, { shouldValidate: true });
+              }
+            : undefined
+        }
       />
       <FormField control={control} name="description" label="What was taken on credit" placeholder="e.g. Cement 20 bags, Bamburi" />
       <FormField control={control} name="principal" label="Amount" prefix="KSh" keyboardType="decimal-pad" placeholder="0.00" />
@@ -223,6 +314,18 @@ export function DebtFormScreen({ route, navigation }: AppScreenProps<'DebtForm'>
       )}
       <FormField control={control} name="terms" label="Agreed terms (optional)" placeholder="e.g. Pay by end of month" />
       <FormField control={control} name="reference" label="Invoice or reference number (optional)" autoCapitalize="characters" />
+      <Controller
+        control={control}
+        name="notify_customer"
+        render={({ field }) => (
+          <ToggleRow
+            label="Send SMS to customer"
+            description="Tells them what they took on credit, the amount and when to pay. Not sent to customers who turned off SMS."
+            value={field.value}
+            onChange={field.onChange}
+          />
+        )}
+      />
     </Screen>
   );
 }

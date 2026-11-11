@@ -4,12 +4,22 @@ import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Alert, FlatList, Linking, View } from 'react-native';
 
+import { ContactResults } from '../components/ContactResults';
 import { Badge, DebtStatusBadge, MoneyText, METHOD_LABEL, VerificationBadge } from '../components/finance';
 import { applyServerErrors, FormField } from '../components/form';
 import { CachedNotice, Screen } from '../components/Screen';
 import { Banner, EmptyState, ErrorState, LoadingState } from '../components/states';
 import { AppText, Button, Card, Divider, ListRow, Row, SectionHeader, SegmentedControl, TextField, ToggleRow } from '../components/ui';
-import { bizPath, useBizMutation, useCustomer, useCustomerDebts, useCustomerPayments, useCustomers } from '../hooks/queries';
+import {
+  bizPath,
+  useBizMutation,
+  useCustomer,
+  useCustomerDebts,
+  useCustomerMpesaNames,
+  useCustomerPayments,
+  useCustomers,
+  useSettings,
+} from '../hooks/queries';
 import { useOutbox } from '../hooks/useOutbox';
 import { useSession } from '../hooks/useSession';
 import type { AppScreenProps } from '../navigation/types';
@@ -19,7 +29,7 @@ import { expectExternalActivity } from '../services/appLifecycle';
 import { LOCAL_PREFIX } from '../services/outbox';
 import { SendReminderButton } from './MpesaScreens';
 import { colors, space } from '../theme/tokens';
-import type { Customer } from '../types/api';
+import type { Customer, MpesaName } from '../types/api';
 import { dueLabel, formatDate, formatDateTime } from '../utils/dates';
 import { formatKES, isPositive, isZero } from '../utils/money';
 import { formatPhone, normalizeKenyanPhone } from '../utils/phone';
@@ -132,15 +142,20 @@ function CustomerRow({ c, onPress }: { c: Customer; onPress: () => void }) {
   );
 }
 
+const NO_PHONES: ReadonlySet<string> = new Set();
+
 export function CustomerFormScreen({ route, navigation }: AppScreenProps<'CustomerForm'>) {
   const editingId = route.params?.customerId;
   const existing = useCustomer(editingId ?? '', !!editingId);
   const { submit } = useOutbox();
-  const { businessId } = useSession();
+  const { businessId, isManager } = useSession();
+  const settings = useSettings();
+  const canAddCustomers = isManager || !!settings.data?.data.cashier_can_register_customers;
+  const [contactQuery, setContactQuery] = useState<string | null>(null); // null: contact search closed
   const [formError, setFormError] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<{ id: string; name: string; phone: string }[] | null>(null);
   const [key] = useState(newIdempotencyKey);
-  const { control, handleSubmit, setError, reset, formState, getValues } = useForm<CustomerForm>({
+  const { control, handleSubmit, setError, reset, formState, getValues, setValue } = useForm<CustomerForm>({
     resolver: zodResolver(customerSchema),
     defaultValues: { name: '', phone: '', email: '', address: '', notes: '', sms_opt_in: true },
   });
@@ -211,6 +226,30 @@ export function CustomerFormScreen({ route, navigation }: AppScreenProps<'Custom
           <Button title="No, create a new customer" variant="secondary" compact onPress={() => save(getValues(), true)} />
         </Banner>
       ) : null}
+      {!editingId && canAddCustomers ? (
+        contactQuery === null ? (
+          <Button
+            title="Pick from contacts"
+            variant="secondary"
+            compact
+            onPress={() => setContactQuery('')}
+            style={{ alignSelf: 'flex-start', marginBottom: space.md }}
+          />
+        ) : (
+          <View style={{ marginBottom: space.lg }}>
+            <TextField label="Search contacts" placeholder="Name or number" value={contactQuery} onChangeText={setContactQuery} autoCorrect={false} />
+            <ContactResults
+              query={contactQuery}
+              knownPhones={NO_PHONES}
+              onPick={(p) => {
+                setValue('name', p.name, { shouldValidate: true });
+                setValue('phone', formatPhone(p.phone), { shouldValidate: true });
+                setContactQuery(null);
+              }}
+            />
+          </View>
+        )
+      ) : null}
       <FormField control={control} name="name" label="Full name or business name" autoCapitalize="words" />
       <FormField control={control} name="phone" label="Phone number" keyboardType="phone-pad" placeholder="0712 345 678" />
       <FormField control={control} name="email" label="Email (optional)" keyboardType="email-address" autoCapitalize="none" />
@@ -229,6 +268,50 @@ export function CustomerFormScreen({ route, navigation }: AppScreenProps<'Custom
         )}
       />
     </Screen>
+  );
+}
+
+/** Names M-Pesa shows for this customer's payments. Managers can remove a wrongly learned one. */
+function MpesaNames({ customerId, customerName }: { customerId: string; customerName: string }) {
+  const names = useCustomerMpesaNames(customerId);
+  const remove = useBizMutation<{ nameId: string }, MpesaName[]>('post', (b) => `/customers/${customerId}/mpesa-names/${b.nameId}/remove`);
+  const items = names.data?.data ?? [];
+
+  const confirm = (n: MpesaName) =>
+    Alert.alert(`Remove ${n.name}?`, `Payments under this name will no longer suggest ${customerName}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        // If it was already removed (or anything else fails), show the list as the server has it.
+        onPress: () => remove.mutate({ nameId: n.id }, { onError: () => void names.refetch() }),
+      },
+    ]);
+
+  return (
+    <>
+      <SectionHeader title="M-Pesa names" />
+      <Card padded={false}>
+        {names.isPending ? <LoadingState /> : null}
+        {!names.isPending && items.length === 0 ? (
+          <View style={{ padding: space.lg }}>
+            <AppText variant="caption" color={colors.inkMuted}>
+              {"Learned when you match one of this customer's M-Pesa payments by hand."}
+            </AppText>
+          </View>
+        ) : null}
+        {items.map((n, i) => (
+          <View key={n.id}>
+            {i > 0 ? <Divider inset={space.lg} /> : null}
+            <ListRow
+              title={n.name}
+              subtitle={`Learned ${formatDate(n.created_at)}`}
+              right={<Button title="Remove" variant="ghost" compact accessibilityLabel={`Remove ${n.name}`} onPress={() => confirm(n)} />}
+            />
+          </View>
+        ))}
+      </Card>
+    </>
   );
 }
 
@@ -341,6 +424,8 @@ export function CustomerProfileScreen({ route, navigation }: AppScreenProps<'Cus
             </View>
           ))}
       </Card>
+
+      {isManager ? <MpesaNames customerId={customerId} customerName={cust.name} /> : null}
 
       {isManager ? (
         <>

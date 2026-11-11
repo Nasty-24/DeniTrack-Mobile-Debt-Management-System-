@@ -41,8 +41,13 @@ MAX_ATTEMPTS = 3
 # How long a phone has to send a reminder it collected before it is offered again.
 PHONE_LEASE = timedelta(minutes=15)
 MANUAL_PREFIX = "manual:"
+# Credit notices: one SMS when a debt is recorded, telling the customer what they took on credit.
+# They are receipts rather than reminders, so quiet hours and the weekly limit do not apply.
+NOTICE_PREFIX = "notice:"
+NOTICE_ITEMS_MAX = 100  # characters of the debt description quoted in the SMS
 CUSTOMER_CHANNELS = {ReminderChannel.sms, ReminderChannel.whatsapp}
 ALLOWED_PLACEHOLDERS = {"customer_name", "business_name", "amount", "due_date", "business_phone"}
+NOTICE_PLACEHOLDERS = ALLOWED_PLACEHOLDERS | {"items", "credit_date"}
 
 DEFAULT_TEMPLATES = {
     "upcoming": (
@@ -60,12 +65,17 @@ DEFAULT_TEMPLATES = {
         "was due on {due_date}. If you have already paid, please contact us on {business_phone} so we "
         "can confirm the transaction. Thank you."
     ),
+    "credit_notice": (
+        "Hello {customer_name}, {business_name} has recorded {items} taken on credit on {credit_date}, "
+        "worth KSh {amount}. Please pay by {due_date}. Thank you."
+    ),
 }
 
 
-def validate_template(body: str) -> None:
+def validate_template(body: str, kind: str = "upcoming") -> None:
+    allowed = NOTICE_PLACEHOLDERS if kind == "credit_notice" else ALLOWED_PLACEHOLDERS
     fields = {f for _, f, _, _ in string.Formatter().parse(body) if f is not None}
-    unknown = fields - ALLOWED_PLACEHOLDERS
+    unknown = fields - allowed
     if unknown:
         raise ValueError(f"Unknown placeholders: {', '.join(sorted(unknown))}")
     if "{amount}" not in body:
@@ -73,7 +83,11 @@ def validate_template(body: str) -> None:
 
 
 def render(body: str, values: dict) -> str:
-    return body.format_map({k: values.get(k, "") for k in ALLOWED_PLACEHOLDERS})
+    return body.format_map({k: values.get(k, "") for k in NOTICE_PLACEHOLDERS})
+
+
+def is_notice(rec: ReminderHistory) -> bool:
+    return rec.idempotency_key.startswith(NOTICE_PREFIX)
 
 
 def in_quiet_hours(hour: int, start: int, end: int) -> bool:
@@ -184,6 +198,7 @@ def _weekly_count(db: Session, business_id, customer_id, now_utc: datetime) -> i
                 ReminderHistory.channel.in_(CUSTOMER_CHANNELS),
                 ReminderHistory.status == ReminderStatus.sent,
                 ReminderHistory.sent_at >= now_utc - timedelta(days=7),
+                ReminderHistory.idempotency_key.not_like(f"{NOTICE_PREFIX}%"),
             )
         )
         or 0
@@ -214,13 +229,15 @@ def dispatch_due(db: Session, business: Business, now_utc: datetime) -> dict[str
             rec.status, rec.last_error = ReminderStatus.skipped, "Debt no longer outstanding"
             stats["skipped"] += 1
             continue
-        amount = next((amt for tgt, amt in _targets(v) if tgt == rec.target_date), v.figures.balance)
-        # Re-render so the message reflects the ledger right now, not at planning time.
-        rec.message = _message(templates, business, v, rec.offset_days, rec.target_date, amount)
+        notice = is_notice(rec)
+        if not notice:
+            amount = next((amt for tgt, amt in _targets(v) if tgt == rec.target_date), v.figures.balance)
+            # Re-render so the message reflects the ledger right now, not at planning time.
+            rec.message = _message(templates, business, v, rec.offset_days, rec.target_date, amount)
         try:
             if rec.channel in CUSTOMER_CHANNELS:
                 local_hour = now_utc.astimezone(ZoneInfo(business.timezone)).hour
-                if in_quiet_hours(local_hour, settings.quiet_hours_start, settings.quiet_hours_end):
+                if not notice and in_quiet_hours(local_hour, settings.quiet_hours_start, settings.quiet_hours_end):
                     rec.next_attempt_at = next_send_time(now_utc, settings, business.timezone)
                     stats["deferred"] += 1
                     continue
@@ -229,7 +246,8 @@ def dispatch_due(db: Session, business: Business, now_utc: datetime) -> dict[str
                     stats["skipped"] += 1
                     continue
                 if (
-                    _weekly_count(db, business.id, rec.customer_id, now_utc)
+                    not notice
+                    and _weekly_count(db, business.id, rec.customer_id, now_utc)
                     >= settings.max_reminders_per_customer_per_week
                 ):
                     rec.status, rec.last_error = ReminderStatus.skipped, "Weekly reminder limit reached"
@@ -237,6 +255,8 @@ def dispatch_due(db: Session, business: Business, now_utc: datetime) -> dict[str
                     continue
                 if rec.channel == ReminderChannel.whatsapp:
                     raise DeliveryError("WhatsApp Business provider is not configured", retryable=False)
+                if not rec.message:  # notices keep the text written when the debt was recorded
+                    raise DeliveryError("The message is empty", retryable=False)
                 rec.attempts += 1
                 rec.provider_message_id = get_sms().send(v.debt.customer.phone, rec.message)
             else:
@@ -256,12 +276,13 @@ def dispatch_due(db: Session, business: Business, now_utc: datetime) -> dict[str
 
 
 def _failure_alert(db: Session, business_id, rec: ReminderHistory, customer_name: str, debt_number: str) -> None:
+    what = "Credit notice" if is_notice(rec) else "Reminder"
     db.add(
         Notification(
             business_id=business_id,
             kind="reminder_failed",
-            title="Reminder not delivered",
-            body=f"Reminder to {customer_name} for {debt_number} failed: {rec.last_error}"[:500],
+            title=f"{what} not delivered",
+            body=f"{what} to {customer_name} for {debt_number} failed: {rec.last_error}"[:500],
             entity_type="debt",
             entity_id=rec.debt_id,
         )
@@ -295,29 +316,26 @@ def claim_for_phone(
     """Hand due SMS reminders to the owner's phone to send from its own SIM.
 
     Applies the same rules as server sending (quiet hours, opt-out, weekly limit, current
-    balance). Each reminder is leased to the phone for PHONE_LEASE; if the phone never
-    reports back it is offered again, up to MAX_ATTEMPTS times.
+    balance); credit notices are exempt from quiet hours and the weekly limit. Each SMS is
+    leased to the phone for PHONE_LEASE; if the phone never reports back it is offered
+    again, up to MAX_ATTEMPTS times.
     """
     settings = db.get(BusinessSettings, business.id)
     if settings is None or settings.sms_sender != "phone":
         return []
     local_hour = now_utc.astimezone(ZoneInfo(business.timezone)).hour
-    if in_quiet_hours(local_hour, settings.quiet_hours_start, settings.quiet_hours_end):
-        return []
+    quiet = in_quiet_hours(local_hour, settings.quiet_hours_start, settings.quiet_hours_end)
     today = now_utc.astimezone(ZoneInfo(business.timezone)).date()
     templates = _templates(db, business.id)
-    due = db.scalars(
-        select(ReminderHistory)
-        .where(
-            ReminderHistory.business_id == business.id,
-            ReminderHistory.channel == ReminderChannel.sms,
-            ReminderHistory.status == ReminderStatus.queued,
-            ReminderHistory.next_attempt_at <= now_utc,
-        )
-        .order_by(ReminderHistory.created_at)
-        .limit(100)
-        .with_for_update(skip_locked=True)
-    ).all()
+    stmt = select(ReminderHistory).where(
+        ReminderHistory.business_id == business.id,
+        ReminderHistory.channel == ReminderChannel.sms,
+        ReminderHistory.status == ReminderStatus.queued,
+        ReminderHistory.next_attempt_at <= now_utc,
+    )
+    if quiet:
+        stmt = stmt.where(ReminderHistory.idempotency_key.like(f"{NOTICE_PREFIX}%"))
+    due = db.scalars(stmt.order_by(ReminderHistory.created_at).limit(100).with_for_update(skip_locked=True)).all()
     claimed: list[tuple[ReminderHistory, Customer]] = []
     in_batch: dict[uuid.UUID, int] = {}
     for rec in due:
@@ -335,15 +353,16 @@ def claim_for_phone(
         if not v.debt.customer.sms_opt_in:
             rec.status, rec.last_error = ReminderStatus.skipped, "Customer opted out"
             continue
-        sent_this_week = _weekly_count(db, business.id, rec.customer_id, now_utc) + in_batch.get(rec.customer_id, 0)
-        if sent_this_week >= settings.max_reminders_per_customer_per_week:
-            rec.status, rec.last_error = ReminderStatus.skipped, "Weekly reminder limit reached"
-            continue
-        amount = next((amt for tgt, amt in _targets(v) if tgt == rec.target_date), v.figures.balance)
-        rec.message = _message(templates, business, v, rec.offset_days, rec.target_date, amount)
+        if not is_notice(rec):
+            sent_this_week = _weekly_count(db, business.id, rec.customer_id, now_utc) + in_batch.get(rec.customer_id, 0)
+            if sent_this_week >= settings.max_reminders_per_customer_per_week:
+                rec.status, rec.last_error = ReminderStatus.skipped, "Weekly reminder limit reached"
+                continue
+            amount = next((amt for tgt, amt in _targets(v) if tgt == rec.target_date), v.figures.balance)
+            rec.message = _message(templates, business, v, rec.offset_days, rec.target_date, amount)
+            in_batch[rec.customer_id] = in_batch.get(rec.customer_id, 0) + 1
         rec.attempts += 1
         rec.next_attempt_at = now_utc + PHONE_LEASE
-        in_batch[rec.customer_id] = in_batch.get(rec.customer_id, 0) + 1
         claimed.append((rec, v.debt.customer))
     return claimed
 
@@ -434,6 +453,48 @@ def manual_reminder(
     db.add(rec)
     db.flush()
     return rec, customer
+
+
+def queue_credit_notice(db: Session, business: Business, debt: Debt, now_utc: datetime) -> ReminderHistory:
+    """Queue the SMS telling a customer what they just took on credit and when to pay.
+
+    It goes out like a reminder SMS (from the owner's phone or the SMS provider), at once and
+    whatever the time of day. Customers who opted out of SMS get none. One per debt.
+    """
+    customer = debt.customer
+    items = " ".join(debt.description.split())
+    if len(items) > NOTICE_ITEMS_MAX:
+        items = items[: NOTICE_ITEMS_MAX - 1].rstrip(" ,;.") + "…"
+    message = render(
+        _templates(db, business.id)["credit_notice"],
+        {
+            "customer_name": customer.name.split(" ")[0],
+            "business_name": business.name,
+            "amount": f"{debt.principal:,.2f}",
+            "items": items,
+            "credit_date": debt.incurred_on.strftime("%d %b %Y"),
+            "due_date": debt.due_date.strftime("%d %b %Y"),
+            "business_phone": business.phone or "",
+        },
+    )
+    today = now_utc.astimezone(ZoneInfo(business.timezone)).date()
+    rec = ReminderHistory(
+        business_id=business.id,
+        debt_id=debt.id,
+        customer_id=customer.id,
+        channel=ReminderChannel.sms,
+        target_date=debt.due_date,
+        offset_days=(debt.due_date - today).days,
+        idempotency_key=f"{NOTICE_PREFIX}{debt.id}",
+        status=ReminderStatus.queued,
+        message=message,
+        next_attempt_at=now_utc,
+    )
+    if not customer.sms_opt_in:
+        rec.status, rec.last_error, rec.next_attempt_at = ReminderStatus.skipped, "Customer opted out", None
+    db.add(rec)
+    db.flush()
+    return rec
 
 
 def _notify_staff(db: Session, business: Business, rec: ReminderHistory, v: DebtView) -> None:

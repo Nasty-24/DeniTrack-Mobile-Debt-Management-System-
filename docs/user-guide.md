@@ -19,13 +19,23 @@
 |---|---|
 | See what is owed, what is overdue and today's collections | **Home** |
 | Find a customer | **Customers**: search by name, phone (e.g. `0712…`) or customer ID (`C-00012`) |
-| Add a customer | **Customers → Add**. If DeniTrack thinks they already exist, it shows the match first |
-| Record goods given on credit | **Home → New debt**, or from the customer's profile. Turn on *Pay in installments* for weekly or monthly plans |
+| Add a customer | **Customers → Add**. Tap **Pick from contacts** to fill in the name and number from your phone's contacts. If DeniTrack thinks they already exist, it shows the match first |
+| Record goods given on credit | **Home → New debt**, or from the customer's profile. Search for the customer: people in your phone's contacts who aren't customers yet appear under *From your phone*, and picking one adds them as a customer when you save. Turn on *Pay in installments* for weekly or monthly plans. *Send SMS to customer* (on by default) texts them what they took, the amount and when to pay |
 | Record money received | **Record payment**. Choose the customer, check the amount, choose *Oldest due first* or a specific debt, pick the method, then **Review payment → Confirm and save** |
 | Give a receipt | After saving a payment, tap **Share as text** (SMS or WhatsApp) or **Share PDF** |
 | Ask a customer to pay by M-Pesa | In **Record payment**, tap **Request payment by M-Pesa instead**. The customer gets a PIN prompt; the payment is recorded only when M-Pesa confirms it |
 | Follow up overdue accounts | **Debts → Overdue**, or **More → Overdue debts** |
 | See what is coming due | **Debts → Due soon**, or **More → Upcoming payments** |
+
+### Customers from your phone's contacts
+
+The first time you search contacts, Android asks whether DeniTrack may read them. The phone book
+stays on the phone: DeniTrack saves only the person you pick, as a customer, and you can tidy their
+name before saving. When you're online and the number already belongs to a customer, the debt goes
+to that customer instead of creating a second one. Offline, DeniTrack can't check: if the number
+turns out to belong to a customer, the new customer and the debt turn the sync bar red (see
+*Working without internet*). Cashiers see contacts only when the business lets cashiers add
+customers. If you said no, **Open settings** lets you change your mind.
 
 ### What the colours mean
 
@@ -61,6 +71,15 @@ On the phone that receives your business's M-Pesa messages, an owner or administ
 - When a message says you received money, the payment is recorded and the debt reduced **only if the
   payer's phone number and name both match one customer**. Safaricom now hides part of the number
   (e.g. 0722\*\*\*712); DeniTrack matches the digits that are shown together with the name.
+- **M-Pesa names.** Customers added from contacts often have nicknames ("Mama Njeri"), while M-Pesa
+  shows the name on their ID ("NJERI WAMBUI"). When you match one of their payments by hand,
+  DeniTrack remembers that name, so their next payment from the same number is recorded
+  automatically. Owners and admins see these names on the customer's page and can remove a wrong one.
+- **Pochi la Biashara** messages show the payer's name but no phone number, so they are never
+  recorded automatically. If that name has paid for one customer before, the customer is already
+  chosen under **Needs matching**: one tap on **Record for …** records it. DeniTrack has not yet been
+  checked against a real Pochi message, so until it is, Pochi payments may not appear at all: record
+  them by hand.
 - If a cashier already typed that M-Pesa code, the message confirms their payment instead.
 - Anything it cannot match safely (a different name, someone paying for a customer, more than is owed)
   waits under **More → M-Pesa messages → Needs matching**. Tap **Record for …** or **Choose customer**,
@@ -88,7 +107,15 @@ phone. If you later get an SMS provider, choose it under **Schedule → Send SMS
 phone) or **WhatsApp** (opens WhatsApp with the message ready; you tap send). The message uses your
 wording and their current balance, and counts towards the weekly limit.
 
-Edit the wording under **Messages**. Keep it friendly. Never threaten or shame, and remember reminders go only to the customer.
+**SMS when credit is recorded:** with *Send SMS to customer* on, the customer gets a message such as
+"Hello Achieng, Duka la Mama has recorded Cement 2 bags taken on credit on 07 Nov 2026, worth KSh
+2,450.00. Please pay by 21 Nov 2026." It is a receipt, not a reminder, so it goes straight away even
+in quiet hours and does not count towards the weekly limit. It goes out like reminder SMS: at once if
+the debt was recorded on the phone that sends SMS, otherwise from that phone at its next check (within
+a minute while the app is open). Customers who turned off SMS do not get it.
+
+Edit the wording under **Messages** (*When credit is recorded* is the notice; it can also use
+`{items}` and `{credit_date}`). Keep it friendly. Never threaten or shame, and remember reminders go only to the customer.
 
 ## Reports
 

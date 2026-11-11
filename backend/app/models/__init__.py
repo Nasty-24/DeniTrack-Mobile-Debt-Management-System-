@@ -437,6 +437,27 @@ class MpesaSmsMessage(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
+class CustomerMpesaName(Base):
+    """A name M-Pesa shows for a customer's payments, learned when staff matched one by hand.
+
+    Phone-book names are often nicknames, while M-Pesa shows the name on the payer's ID, so
+    the matcher also accepts these. Stored as M-Pesa sends it: upper case, single spaces.
+    """
+
+    __tablename__ = "customer_mpesa_names"
+    __table_args__ = (
+        UniqueConstraint("business_id", "customer_id", "name"),
+        Index("ix_customer_mpesa_names_business_name", "business_id", "name"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    business_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("businesses.id"), index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id"))
+    name: Mapped[str] = mapped_column(String(160))
+    source_message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mpesa_sms_messages.id"))
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
 # --------------------------------------------------------------------------- reminders
 
 
@@ -537,6 +558,7 @@ TENANT_TABLES = [
     "receipts",
     "payment_requests",
     "mpesa_sms_messages",
+    "customer_mpesa_names",
     "reminder_templates",
     "reminder_history",
     "notifications",

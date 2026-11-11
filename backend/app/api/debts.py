@@ -22,7 +22,8 @@ from app.schemas import (
     Page,
 )
 from app.services import debts as svc
-from app.services.common import business_today
+from app.services.common import business_today, utcnow
+from app.services.reminders import queue_credit_notice
 
 router = APIRouter(prefix="/businesses/{business_id}/debts", tags=["debts"])
 
@@ -101,6 +102,8 @@ def create_debt(
             if existing:
                 return debt_out(svc.view(db, tenant, existing.id), business_today(tenant.business))
         debt = svc.create_debt(db, tenant, data)
+        if data.notify_customer:
+            queue_credit_notice(db, tenant.business, debt, utcnow())
         return debt_out(svc.view(db, tenant, debt.id), business_today(tenant.business))
 
     return idempotent_create(db, tenant, key, data, action, "debts.create")

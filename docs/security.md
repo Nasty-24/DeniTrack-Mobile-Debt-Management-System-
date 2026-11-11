@@ -50,7 +50,7 @@ register with the Office of the Data Protection Commissioner (ODPC) as required.
 | Principle / right | How DeniTrack supports it | Business responsibility |
 |---|---|---|
 | Lawful basis | Records exist to perform a credit-sale contract and keep accounting records. In-app privacy notice shown at sign-up and in Settings | Tell customers what is recorded (e.g. a notice at the till) |
-| Data minimisation | Only name and phone are required; email, address and notes are optional; notes guidance limits them to business needs | Do not record unrelated personal details in notes |
+| Data minimisation | Only name and phone are required; email, address and notes are optional; notes guidance limits them to business needs. Contacts search reads the phone book on the phone only, in memory while the form is open; only the person picked is saved, and the app can read contacts but not change them | Do not record unrelated personal details in notes |
 | Purpose limitation and confidentiality | Reminders go only to the customer's own number; templates cannot add arbitrary fields; staff see only their business | Train staff not to discuss balances with third parties |
 | Marketing / contact preferences | Per-customer SMS opt-out, quiet hours, weekly cap; polite default wording | Honour opt-out requests promptly |
 | Access and rectification | Owners/admins can view and correct customer details (audited) | Respond to requests within statutory timelines |
@@ -68,6 +68,11 @@ SET name = 'Former customer ' || customer_number,
     name_normalized = 'former customer ' || lower(customer_number),
     phone = '+0000000000', email = NULL, address = NULL, notes = NULL, sms_opt_in = false
 WHERE business_id = :business_id AND status = 'archived' AND updated_at < now() - interval '7 years';
+
+-- Learned M-Pesa names are personal data too.
+DELETE FROM customer_mpesa_names
+WHERE business_id = :business_id
+  AND customer_id IN (SELECT id FROM customers WHERE business_id = :business_id AND name LIKE 'Former customer %');
 ```
 
 Receipt snapshots also contain customer names and phones. Apply the same treatment with

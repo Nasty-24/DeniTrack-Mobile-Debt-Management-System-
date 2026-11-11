@@ -105,6 +105,24 @@ def test_tenant_cannot_write_into_another_business(migrated):
         )
 
 
+def test_learned_mpesa_names_are_isolated(migrated):
+    engine, ids = migrated
+    with engine.begin() as c:
+        c.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
+        customer = c.execute(text("SELECT id FROM customers WHERE business_id = :b"), {"b": ids["b"]}).scalar_one()
+        c.execute(
+            text(
+                "INSERT INTO customer_mpesa_names (id, business_id, customer_id, name, created_by, created_at) "
+                "VALUES (:id, :b, :c, 'NJERI WAMBUI', :u, now())"
+            ),
+            {"id": uuid.uuid4(), "b": ids["b"], "c": customer, "u": ids["u"]},
+        )
+    for key, expected in (("a", 0), ("b", 1)):
+        with engine.begin() as c:
+            c.execute(text("SELECT set_config('app.business_id', :b, true)"), {"b": str(ids[key])})
+            assert c.execute(text("SELECT count(*) FROM customer_mpesa_names")).scalar() == expected
+
+
 def test_bypass_is_only_for_system_jobs(migrated):
     engine, _ = migrated
     with engine.begin() as c:

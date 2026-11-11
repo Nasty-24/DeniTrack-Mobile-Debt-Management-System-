@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import Feather from '@expo/vector-icons/Feather';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -132,8 +133,11 @@ interface FieldProps extends TextInputProps {
   prefix?: string;
 }
 
-export function TextField({ label, error, hint, prefix, style, editable = true, ...rest }: FieldProps) {
+export function TextField({ label, error, hint, prefix, style, editable = true, secureTextEntry, ...rest }: FieldProps) {
   const styles = getStyles();
+  // Password fields get a show/hide button so people can check what they typed.
+  const [revealed, setRevealed] = useState(false);
+  const name = label.toLowerCase();
   return (
     <View style={styles.field}>
       <AppText variant="caption" color={colors.inkMuted} style={styles.fieldLabel}>
@@ -158,8 +162,20 @@ export function TextField({ label, error, hint, prefix, style, editable = true, 
           editable={editable}
           style={[styles.input, style]}
           maxFontSizeMultiplier={1.6}
+          secureTextEntry={secureTextEntry && !revealed}
           {...rest}
         />
+        {secureTextEntry ? (
+          <Pressable
+            onPress={() => setRevealed((r) => !r)}
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? `Hide ${name}` : `Show ${name}`}
+            hitSlop={8}
+            style={styles.reveal}
+          >
+            <Feather name={revealed ? 'eye-off' : 'eye'} size={20} color={colors.inkMuted} />
+          </Pressable>
+        ) : null}
       </View>
       {error ? (
         <AppText variant="caption" color={colors.danger} accessibilityLiveRegion="polite" style={styles.fieldNote}>
@@ -372,6 +388,7 @@ const getStyles = themedStyles((c) =>
   },
   prefix: { marginRight: space.xs },
   input: { flex: 1, fontSize: 16, color: c.ink, paddingVertical: space.sm },
+  reveal: { minWidth: touchTarget, minHeight: touchTarget, alignItems: 'center', justifyContent: 'center', marginRight: -space.md },
   segmented: {
     flexDirection: 'row',
     backgroundColor: c.surfaceSunken,

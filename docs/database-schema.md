@@ -67,6 +67,7 @@ erDiagram
 | `payment_provider_events` | Every provider callback received, with outcome | unique (`provider`, `event_key`): repeated callbacks are processed once |
 | `reminder_templates` | Per-business message text for upcoming / due today / overdue | unique (`business_id`, `kind`) |
 | `mpesa_sms_messages` | Each M-Pesa "received" SMS read on the owner's phone: code, amount, payer name and (possibly masked) number, outcome, customer, payment. The owner's M-Pesa balance is redacted from the stored text | unique (`business_id`, `transaction_code`): one SMS is applied at most once |
+| `customer_mpesa_names` | Names M-Pesa shows for a customer's payments, learned when staff matched one by hand; the payment it was learned from; who matched it | unique (`business_id`, `customer_id`, `name`); index (`business_id`, `name`) |
 | `reminder_history` | Every planned reminder: channel, target date, offset, status, attempts, last error, next attempt | `idempotency_key` unique = (debt, target date, offset, channel) |
 | `notifications` | In-app alerts for staff | `dedupe_key` unique |
 | `audit_logs` | Who did what, before/after JSON, reason, IP | index (`business_id`, `created_at`) |

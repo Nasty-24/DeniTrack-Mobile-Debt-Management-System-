@@ -16,6 +16,8 @@ so masked numbers are matched on the digits that are shown.
 
 import re
 import uuid
+from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -28,6 +30,7 @@ from app.api.deps import Tenant
 from app.errors import AppError, BusinessRuleError, NotFound
 from app.models import (
     Customer,
+    CustomerMpesaName,
     CustomerStatus,
     MpesaSmsMessage,
     MpesaSmsStatus,
@@ -42,6 +45,7 @@ from app.services.common import audit, utcnow
 from app.services.payments import record_payment, verify_payment
 
 MPESA_SENDERS = {"MPESA", "M-PESA"}
+UNKNOWN_PAYER = "UNKNOWN"  # the message showed a number but no name
 
 _AMOUNT = r"Ksh\s?(?P<amount>\d[\d,]*(?:\.\d{1,2})?)"
 # Where the payer's details end: the date, "via ...", the end of a sentence, or "New ... balance".
@@ -104,7 +108,7 @@ def parse_mpesa_sms(text: str) -> ParsedSms | None:
     name = " ".join(re.sub(r"[^A-Za-z' -]", " ", name_part).split()).upper()
     if not name and not phone:
         return None
-    return ParsedSms(code, amount, (name or "UNKNOWN")[:160], phone)
+    return ParsedSms(code, amount, (name or UNKNOWN_PAYER)[:160], phone)
 
 
 def redact_balance(text: str) -> str:
@@ -139,6 +143,19 @@ def phone_matches(pattern: str, e164: str) -> bool:
     )
 
 
+def learned_names(db: Session, business_id: uuid.UUID) -> dict[uuid.UUID, set[str]]:
+    """Customer id -> the M-Pesa names learned for that customer."""
+    out: dict[uuid.UUID, set[str]] = {}
+    rows = db.execute(
+        select(CustomerMpesaName.customer_id, CustomerMpesaName.name).where(
+            CustomerMpesaName.business_id == business_id
+        )
+    )
+    for customer_id, name in rows:
+        out.setdefault(customer_id, set()).add(name)
+    return out
+
+
 def _name_tokens(name: str) -> set[str]:
     return {w.replace("'", "") for w in re.findall(r"[A-Za-z']+", name.upper()) if len(w) >= 2}
 
@@ -160,22 +177,48 @@ class Match:
     reason: str = ""
 
 
-def match_customer(parsed: ParsedSms, customers: list[Customer]) -> Match:
+def match_customer(
+    parsed: ParsedSms,
+    customers: list[Customer],
+    learned: Mapping[uuid.UUID, AbstractSet[str]] | None = None,
+) -> Match:
+    """Only a phone-number match is ever applied automatically. A learned M-Pesa name counts as
+    the customer's name; without a matching number it can only suggest the customer."""
+    learned = learned or {}
+    payer = parsed.payer_name
+    # A learned name counts as a full-name match: it beats a partial match, but ties with a
+    # customer whose own name is the M-Pesa name, so that payment waits for a person.
+    full_match = len(_name_tokens(payer))
+
+    def score(c: Customer) -> int:
+        return full_match if payer in learned.get(c.id, ()) else name_score(payer, c.name)
+
     pattern = phone_pattern(parsed.payer_phone) if parsed.payer_phone else None
     by_phone = [c for c in customers if pattern and phone_matches(pattern, c.phone)]
-    both = sorted(
-        ((score, c) for c in by_phone if (score := name_score(parsed.payer_name, c.name)) > 0),
-        key=lambda t: -t[0],
-    )
+    both = sorted(((s, c) for c in by_phone if (s := score(c)) > 0), key=lambda t: -t[0])
     if len(both) == 1 or (len(both) > 1 and both[0][0] > both[1][0]):
         return Match(both[0][1])
     if both:
         return Match(None, None, f"{len(both)} customers match this number and name. Choose the right one.")
     if len(by_phone) == 1:
         c = by_phone[0]
-        return Match(None, c, f"The number matches {c.name}, but the M-Pesa name {parsed.payer_name} does not.")
+        return Match(None, c, f"The number matches {c.name}, but the M-Pesa name {payer} does not.")
     if by_phone:
         return Match(None, None, f"{len(by_phone)} customers match this number, but none by name.")
+    # No number (e.g. Pochi la Biashara), or a number no customer has.
+    paid_before = [c for c in customers if payer in learned.get(c.id, ())]
+    if len(paid_before) == 1:
+        c = paid_before[0]
+        why = (
+            "No phone number in this payment (for example Pochi la Biashara)."
+            if parsed.payer_phone is None
+            else "This number isn't saved for any customer."
+        )
+        return Match(None, c, f"{why} {payer} has paid for {c.name} before.")
+    if paid_before:
+        return Match(
+            None, None, f"{len(paid_before)} customers have paid under the M-Pesa name {payer}. Choose the right one."
+        )
     named = [c for c in customers if _full_name_match(parsed.payer_name, c.name)]
     if len(named) == 1:
         return Match(None, named[0], f"No customer has this number. {named[0].name} has the same name.")
@@ -214,7 +257,14 @@ def _apply(db: Session, tenant: Tenant, rec: MpesaSmsMessage, customer: Customer
     )
 
 
-def _decide(db: Session, tenant: Tenant, rec: MpesaSmsMessage, parsed: ParsedSms, customers: list[Customer]) -> None:
+def _decide(
+    db: Session,
+    tenant: Tenant,
+    rec: MpesaSmsMessage,
+    parsed: ParsedSms,
+    customers: list[Customer],
+    learned: Mapping[uuid.UUID, AbstractSet[str]] | None,
+) -> None:
     entered = db.scalar(
         select(Payment).where(
             Payment.business_id == tenant.business_id,
@@ -243,11 +293,11 @@ def _decide(db: Session, tenant: Tenant, rec: MpesaSmsMessage, parsed: ParsedSms
             rec.detail = f"Already recorded for {name}."
         return
 
-    match = match_customer(parsed, customers)
+    match = match_customer(parsed, customers, learned)
     if match.customer is None:
         rec.status = MpesaSmsStatus.needs_review
         rec.suggested_customer_id = match.suggestion.id if match.suggestion else None
-        rec.detail = match.reason
+        rec.detail = match.reason[:300]  # names can be long; the column holds 300
         return
     try:
         with db.begin_nested():
@@ -293,7 +343,13 @@ def _aware(dt: datetime) -> datetime:
 
 
 def process_message(
-    db: Session, tenant: Tenant, sender: str, body: str, received_at: datetime, customers: list[Customer]
+    db: Session,
+    tenant: Tenant,
+    sender: str,
+    body: str,
+    received_at: datetime,
+    customers: list[Customer],
+    learned: Mapping[uuid.UUID, AbstractSet[str]] | None = None,
 ) -> SmsOutcome:
     if sender.strip().upper() not in MPESA_SENDERS:
         return SmsOutcome("ignored", detail="Not sent by M-PESA.")
@@ -323,7 +379,7 @@ def process_message(
     )
     try:
         with db.begin_nested():
-            _decide(db, tenant, rec, parsed, customers)
+            _decide(db, tenant, rec, parsed, customers, learned)
             db.add(rec)
             db.flush()
     except IntegrityError:
@@ -342,7 +398,8 @@ def process_batch(db: Session, tenant: Tenant, messages: list[tuple[str, str, da
             select(Customer).where(Customer.business_id == tenant.business_id, Customer.status == CustomerStatus.active)
         )
     )
-    return [process_message(db, tenant, s, b, r, customers) for s, b, r in messages]
+    learned = learned_names(db, tenant.business_id)
+    return [process_message(db, tenant, s, b, r, customers, learned) for s, b, r in messages]
 
 
 # --------------------------------------------------------------------------- review
@@ -369,7 +426,11 @@ def assign(db: Session, tenant: Tenant, message_id: uuid.UUID, customer_id: uuid
     payment = _apply(db, tenant, rec, customer)
     rec.status, rec.customer_id, rec.payment_id = MpesaSmsStatus.applied, customer.id, payment.id
     rec.resolved_by, rec.resolved_at = tenant.user.id, utcnow()
-    rec.detail = f"Matched to {customer.name} by {tenant.user.full_name}."
+    rec.detail = f"Matched to {customer.name} by {tenant.user.full_name}."[:300]
+    learned = learn_name(db, tenant, customer, rec)
+    after = {"code": rec.transaction_code, "customer": customer.customer_number, "payment": str(payment.id)}
+    if learned:
+        after["learned_name"] = learned
     audit(
         db,
         business_id=tenant.business_id,
@@ -377,10 +438,42 @@ def assign(db: Session, tenant: Tenant, message_id: uuid.UUID, customer_id: uuid
         action="mpesa_sms.assigned",
         entity_type="mpesa_sms",
         entity_id=rec.id,
-        after={"code": rec.transaction_code, "customer": customer.customer_number, "payment": str(payment.id)},
+        after=after,
         ip=tenant.ip,
     )
     return rec
+
+
+def learn_name(db: Session, tenant: Tenant, customer: Customer, rec: MpesaSmsMessage) -> str | None:
+    """Remember the M-Pesa name on a payment staff matched to `customer` by hand.
+
+    Returns the name when it is new for this customer, otherwise None."""
+    name = rec.payer_name
+    if name == UNKNOWN_PAYER:
+        return None
+    known = db.scalar(
+        select(CustomerMpesaName.id).where(
+            CustomerMpesaName.business_id == tenant.business_id,
+            CustomerMpesaName.customer_id == customer.id,
+            CustomerMpesaName.name == name,
+        )
+    )
+    if known is not None:
+        return None
+    try:
+        with db.begin_nested():
+            db.add(
+                CustomerMpesaName(
+                    business_id=tenant.business_id,
+                    customer_id=customer.id,
+                    name=name,
+                    source_message_id=rec.id,
+                    created_by=tenant.user.id,
+                )
+            )
+    except IntegrityError:  # learned at the same moment by another request
+        return None
+    return name
 
 
 def dismiss(db: Session, tenant: Tenant, message_id: uuid.UUID, reason: str | None) -> MpesaSmsMessage:

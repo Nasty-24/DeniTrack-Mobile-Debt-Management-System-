@@ -50,6 +50,20 @@ describe('accessibility', () => {
     expect(screen.getByText('Enter a valid phone number')).toBeTruthy();
   });
 
+  it('password fields can be shown and hidden again', async () => {
+    await render(<TextField label="Password" value="s3cret-pass" secureTextEntry />);
+    expect(screen.getByLabelText('Password').props.secureTextEntry).toBe(true);
+    await fireEvent.press(screen.getByRole('button', { name: 'Show password' }));
+    expect(screen.getByLabelText('Password').props.secureTextEntry).toBe(false);
+    await fireEvent.press(screen.getByRole('button', { name: 'Hide password' }));
+    expect(screen.getByLabelText('Password').props.secureTextEntry).toBe(true);
+  });
+
+  it('ordinary fields have no show/hide button', async () => {
+    await render(<TextField label="Phone number" value="" />);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('money is read out in words', async () => {
     await render(<MoneyText amount="1500.50" />);
     expect(screen.getByText('KSh 1,500.50')).toBeTruthy();
