@@ -1,10 +1,13 @@
-"""Run by test_postgres_rls.py in a subprocess: drives the real API while connected as the
-restricted `dt_app` role, so every query is subject to row-level security."""
+"""Run by test_postgres_rls.py in a subprocess: drives the real API while connected as a
+restricted role (the `dt_app` login, or a superuser switched to `denitrack_app`), so every
+query is subject to row-level security."""
 
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
+from app.db import engine
 from app.main import app
 from app.workers.scheduler import run_once
 
@@ -49,4 +52,9 @@ assert c.get(f"{base2}/customers/{cust['id']}", headers=h2).status_code == 404
 assert c.get(f"{base2}/dashboard", headers=h2).json()["total_outstanding"] == "0.00"
 stats = run_once()
 assert stats["businesses"] >= 2, stats
-print("RLS smoke OK", stats)
+with engine.connect() as conn:
+    who = conn.execute(
+        text("SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+    ).one()
+assert not who.rolsuper and not who.rolbypassrls, f"API ran as {who.current_user}, which ignores row-level security"
+print("RLS smoke OK", stats, "as", who.current_user)

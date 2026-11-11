@@ -11,7 +11,9 @@ class Base(DeclarativeBase):
     pass
 
 
-def make_engine(url: str) -> Engine:
+def make_engine(url: str, role: str = "") -> Engine:
+    """Build the engine. With `role`, every PostgreSQL connection switches to that role first,
+    so row-level security applies even when the login user is a superuser."""
     kwargs: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
@@ -28,10 +30,19 @@ def make_engine(url: str) -> Engine:
             cur.execute("PRAGMA foreign_keys=ON")
             cur.close()
 
+    if role and url.startswith("postgresql"):
+
+        @event.listens_for(engine, "connect")
+        def _switch_role(dbapi_conn, _):
+            cur = dbapi_conn.cursor()
+            cur.execute(f'SET ROLE "{role}"')  # role is a validated plain identifier
+            cur.close()
+            dbapi_conn.commit()  # SET is transactional: commit so a later rollback keeps it
+
     return engine
 
 
-engine = make_engine(get_settings().database_url)
+engine = make_engine(get_settings().database_url, get_settings().db_role)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

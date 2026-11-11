@@ -1,5 +1,6 @@
 """Environment-based configuration. Secrets come only from the environment."""
 
+import re
 from functools import lru_cache
 from typing import Literal
 
@@ -53,6 +54,9 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "test", "production"] = "development"
     database_url: str = "sqlite:///./denitrack-dev.db"
+    # PostgreSQL role the API switches to after connecting. For platforms whose only database
+    # user is a superuser, which ignores row-level security; migration 0005 creates the role.
+    db_role: str = ""
     # Must be overridden in production; startup refuses the default there.
     jwt_secret: str = Field(default="dev-only-insecure-secret-change-me", min_length=16)
     jwt_algorithm: str = "HS256"
@@ -87,6 +91,14 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_database_url(cls, value: str) -> str:
         return normalize_database_url(value)
+
+    @field_validator("db_role")
+    @classmethod
+    def _plain_role_name(cls, value: str) -> str:
+        # Used in SET ROLE, so allow only a plain lower-case identifier.
+        if value and not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", value):
+            raise ValueError("DENITRACK_DB_ROLE must be a plain role name such as denitrack_app")
+        return value
 
     @property
     def is_production(self) -> bool:

@@ -140,3 +140,44 @@ def test_full_api_runs_under_rls_as_restricted_role(migrated):
     r = subprocess.run([sys.executable, "-m", "tests.rls_smoke"], cwd=BACKEND, env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-3000:]
     assert "RLS smoke OK" in r.stdout
+
+
+# Platforms such as PrimeCloud hand the app a single superuser, which ignores row-level
+# security. Migration 0005 creates a restricted role and the API switches to it.
+
+
+def test_migration_creates_a_restricted_role_for_superuser_platforms(migrated):
+    admin = create_engine(ADMIN_URL)
+    with admin.connect() as c:
+        role = c.execute(
+            text("SELECT rolcanlogin, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'denitrack_app'")
+        ).one()
+    assert tuple(role) == (False, False, False)
+
+
+def test_superuser_connection_switches_to_the_restricted_role(migrated):
+    from app.db import make_engine
+
+    _, ids = migrated
+    engine = make_engine(ADMIN_URL, role="denitrack_app")
+    with engine.connect() as c:
+        assert c.execute(text("SELECT current_user")).scalar() == "denitrack_app"
+        assert c.execute(text("SELECT count(*) FROM customers")).scalar() == 0
+        c.rollback()  # a rolled-back transaction must not undo the switch
+    with engine.begin() as c:
+        assert c.execute(text("SELECT current_user")).scalar() == "denitrack_app"
+        c.execute(text("SELECT set_config('app.business_id', :b, true)"), {"b": str(ids["a"])})
+        assert c.execute(text("SELECT name FROM customers")).scalars().all() == ["cust-a"]
+    engine.dispose()
+
+
+def test_full_api_runs_under_rls_as_a_superuser_with_the_role_switch(migrated):
+    env = os.environ | {
+        "DENITRACK_DATABASE_URL": ADMIN_URL,
+        "DENITRACK_DB_ROLE": "denitrack_app",
+        "DENITRACK_ENVIRONMENT": "test",
+        "DENITRACK_JWT_SECRET": "x" * 40,
+    }
+    r = subprocess.run([sys.executable, "-m", "tests.rls_smoke"], cwd=BACKEND, env=env, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert "RLS smoke OK" in r.stdout

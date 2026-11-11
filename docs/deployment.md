@@ -98,7 +98,8 @@ if [ -z "$DENITRACK_DATABASE_URL" ] && [ -n "$DATABASE_URL" ]; then export DENIT
 ```
 
 PrimeCloud's deploy check probes `/health`. Settings typed into the new-application form may not be
-kept; check them afterwards under the app's **Configuration** tab.
+kept; check them afterwards under the app's **Configuration** tab. PrimeCloud's database user is a
+superuser, so also set `DENITRACK_DB_ROLE=denitrack_app` (see below).
 
 Platforms usually provide a plain `postgresql://…` URL, sometimes with pool options such as
 `connection_limit`. The API accepts it as given: it selects the psycopg driver and drops options libpq
@@ -108,6 +109,10 @@ On a platform with one database user, migrations and the API share that user. Ro
 applies to it (the tables use `FORCE ROW LEVEL SECURITY`) unless the user is a superuser or has
 `BYPASSRLS`. Check in the platform's database shell; both values should be `f`:
 `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user;`
+If the user is a superuser, migration `0005` (run as that user) creates the no-login role
+`denitrack_app`, which cannot bypass row-level security. Set `DENITRACK_DB_ROLE=denitrack_app` on the
+API (and worker) after that migration has run, and every connection switches to it, so RLS applies.
+Migrations still run as the platform user, which owns the tables.
 If the worker is needed, add a second app from the same source with start command
 `python -m app.workers.scheduler` and no pre-deploy command.
 

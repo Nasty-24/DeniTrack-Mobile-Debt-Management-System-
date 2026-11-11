@@ -75,3 +75,14 @@ def test_production_refuses_example_and_default_values(field, value, message):
 
 def test_development_allows_defaults():
     settings(environment="development").validate_for_production()
+
+
+@pytest.mark.parametrize("role", ["", "denitrack_app", "app_role2"])
+def test_database_role_accepts_plain_role_names(role):
+    assert settings(db_role=role).db_role == role
+
+
+@pytest.mark.parametrize("role", ["denitrack_app; DROP TABLE users", 'x"y', "Denitrack", "1role", "a" * 64])
+def test_database_role_refuses_anything_but_a_plain_role_name(role):
+    with pytest.raises(ValueError, match="DENITRACK_DB_ROLE"):
+        settings(db_role=role)

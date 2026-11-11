@@ -75,7 +75,7 @@ Run on Windows 11, 29 Oct – 10 Nov 2026.
 
 | Check | Result |
 |---|---|
-| Backend tests, SQLite (`pytest`) | **194 passed** (+6 PostgreSQL-only tests skipped) |
+| Backend tests, SQLite (`pytest`) | **202 passed** (+9 PostgreSQL-only tests skipped) |
 | Backend tests, PostgreSQL (same suite) | **200 passed** |
 | Migrations and row-level security on PostgreSQL (`tests/test_postgres_rls.py`): upgrade → downgrade → upgrade → `alembic check`, cross-tenant reads/writes blocked for a non-superuser role, full API + worker smoke under RLS | **6 passed** |
 | Backend coverage | 88% of `app/` |
@@ -131,7 +131,7 @@ search the phone book for a customer. The APK requests internet and network-stat
 | 11 | Unauthorised users blocked | Done: role tests |
 | 12 | Businesses isolated | Done: application checks plus PostgreSQL RLS, both tested |
 | 13 | Financial changes auditable | Done: audit log with before/after and reason |
-| 14 | Core workflows tested | Done: 194 backend + 6 PostgreSQL + 181 mobile tests |
+| 14 | Core workflows tested | Done: 202 backend + 9 PostgreSQL + 181 mobile tests |
 | 15 | Mobile app buildable from docs | Done on Windows (release APK built from the documented steps). The Linux CI Android job has not been run yet |
 | 16 | Mock / sandbox / production modes distinct | Done: explicit config, shown in `/health` and the app |
 | 17 | Limitations documented | Done: below and in [security.md](docs/security.md) |
