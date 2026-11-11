@@ -67,7 +67,8 @@ modules need a development build.
 4. Put a TLS-terminating reverse proxy (Caddy, nginx, or a cloud load balancer) in front of
    `127.0.0.1:8000`. Enforce HTTPS and HSTS, and limit request size (1 MB is ample).
 5. Health check: `GET /api/v1/health` returns database status and integration modes
-   (`mock` / `sandbox` / `production`).
+   (`mock` / `sandbox` / `production`). `GET /health` is a plain readiness check for platforms
+   that probe a fixed path: `{"status": "ok"}`, or `503` while the database is unreachable.
 
 The API refuses to start in production while `DENITRACK_JWT_SECRET`, `DENITRACK_MPESA_CALLBACK_TOKEN` or
 the database password still has a default or `change-me` value from `.env.example`.
@@ -83,11 +84,21 @@ owner's phone (the default), the phone's own check plans them.
 | Source | this repository, branch `main` |
 | Root directory / Dockerfile | `backend` / `backend/Dockerfile` (the Dockerfile's `COPY` paths are relative to `backend/`) |
 | Port | `8000` |
-| Health check path | `/api/v1/health` |
+| Health check path | `/health` (or `/api/v1/health` where the platform lets you choose) |
 | Pre-deploy command | `python -m alembic upgrade head` |
 | Start command | empty (the Dockerfile's command, with proxy headers on) |
 | Database binding | env var name `DENITRACK_DATABASE_URL` |
 | Environment | `DENITRACK_ENVIRONMENT=production`; `DENITRACK_JWT_SECRET` and `DENITRACK_MPESA_CALLBACK_TOKEN` as secrets |
+
+On PrimeCloud the database binding is injected as `DATABASE_URL`, and the console has no
+pre-deploy field, so set the app's **Run command** to copy the URL, migrate, then start:
+
+```bash
+if [ -z "$DENITRACK_DATABASE_URL" ] && [ -n "$DATABASE_URL" ]; then export DENITRACK_DATABASE_URL="$DATABASE_URL"; fi; python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "*"
+```
+
+PrimeCloud's deploy check probes `/health`. Settings typed into the new-application form may not be
+kept; check them afterwards under the app's **Configuration** tab.
 
 Platforms usually provide a plain `postgresql://…` URL, sometimes with pool options such as
 `connection_limit`. The API accepts it as given: it selects the psycopg driver and drops options libpq

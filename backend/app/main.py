@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api import auth, business, customers, debts, integrations, mpesa_sms, payments, reminders, reports, sync
@@ -80,6 +81,18 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(api)
+
+    # Hosting platforms probe a plain /health before sending traffic; answer only whether
+    # the server can reach its database, and say nothing about how it is configured.
+    @app.get("/health", include_in_schema=False)
+    def platform_health():
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception:
+            return JSONResponse({"status": "unavailable"}, status_code=503)
+        return {"status": "ok"}
+
     return app
 
 
