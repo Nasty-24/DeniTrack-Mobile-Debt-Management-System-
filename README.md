@@ -76,7 +76,7 @@ Run on Windows 11, 29 Oct – 10 Nov 2026.
 | Check | Result |
 |---|---|
 | Backend tests, SQLite (`pytest`) | **202 passed** (+9 PostgreSQL-only tests skipped) |
-| Backend tests, PostgreSQL (same suite) | **200 passed** |
+| Backend tests, PostgreSQL (same suite) | **211 passed** |
 | Migrations and row-level security on PostgreSQL (`tests/test_postgres_rls.py`): upgrade → downgrade → upgrade → `alembic check`, cross-tenant reads/writes blocked for a non-superuser role, full API + worker smoke under RLS | **6 passed** |
 | Backend coverage | 88% of `app/` |
 | `ruff check` + `ruff format --check`, `mypy app` | clean |
