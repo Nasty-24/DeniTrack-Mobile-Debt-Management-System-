@@ -279,7 +279,17 @@ export function DebtFormScreen({ route, navigation }: AppScreenProps<'DebtForm'>
             : undefined
         }
       />
-      <FormField control={control} name="description" label="What was taken on credit" placeholder="e.g. Cement 20 bags, Bamburi" />
+      <FormField
+        control={control}
+        name="description"
+        label="What was taken on credit"
+        hint="One item per line. Press Enter for the next item."
+        placeholder={'e.g. Cement 20 bags\nSugar 2 kg'}
+        multiline
+        submitBehavior="newline"
+        textAlignVertical="top"
+        style={{ minHeight: 88 }}
+      />
       <FormField control={control} name="principal" label="Amount" prefix="KSh" keyboardType="decimal-pad" placeholder="0.00" />
       <FormField control={control} name="incurred_on" label="Date of sale" placeholder="YYYY-MM-DD" hint="Cannot be in the future" />
       <Controller

@@ -1,6 +1,19 @@
 import { addDaysISO, daysBetween, dueLabel, formatDate, isValidISODate, todayISO } from '../utils/dates';
 import { add, amountLabel, compare, formatKES, fromCents, parseAmountInput, subtract, toCents } from '../utils/money';
 import { formatPhone, normalizeKenyanPhone } from '../utils/phone';
+import { itemsOnOneLine } from '../utils/text';
+
+describe('itemsOnOneLine', () => {
+  it('joins one-item-per-line text with commas, dropping blank lines and spaces', () => {
+    expect(itemsOnOneLine('Sugar 2kg\nBread\n\n  Milk 1L  \n')).toBe('Sugar 2kg, Bread, Milk 1L');
+    expect(itemsOnOneLine('Sugar 2kg\r\nBread')).toBe('Sugar 2kg, Bread');
+    expect(itemsOnOneLine('Sugar 2kg,\nBread;')).toBe('Sugar 2kg, Bread');
+  });
+
+  it('leaves a single line as it is', () => {
+    expect(itemsOnOneLine('Cement 10 bags')).toBe('Cement 10 bags');
+  });
+});
 
 describe('money', () => {
   it('parses what people type into canonical 2dp strings', () => {

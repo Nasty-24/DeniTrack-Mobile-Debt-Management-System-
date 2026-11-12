@@ -75,8 +75,8 @@ Run on Windows 11, 29 Oct – 10 Nov 2026.
 
 | Check | Result |
 |---|---|
-| Backend tests, SQLite (`pytest`) | **202 passed** (+9 PostgreSQL-only tests skipped) |
-| Backend tests, PostgreSQL (same suite) | **211 passed** |
+| Backend tests, SQLite (`pytest`) | **203 passed** (+9 PostgreSQL-only tests skipped) |
+| Backend tests, PostgreSQL (same suite) | **212 passed** |
 | Migrations and row-level security on PostgreSQL (`tests/test_postgres_rls.py`): upgrade → downgrade → upgrade → `alembic check`, cross-tenant reads/writes blocked for a non-superuser role, full API + worker smoke under RLS | **6 passed** |
 | Backend coverage | 88% of `app/` |
 | `ruff check` + `ruff format --check`, `mypy app` | clean |
@@ -85,7 +85,7 @@ Run on Windows 11, 29 Oct – 10 Nov 2026.
 | Live server smoke (uvicorn + seeded data) | health OK; dashboard totals hand-checked against the seed (outstanding 79,300.00, overdue 28,900.00, collected today 12,000.00, month 44,000.00, pending 3,000.00); PDF export 200 |
 | Mobile `tsc --noEmit` (strict) | clean |
 | Mobile `eslint` (eslint-config-expo, incl. React Compiler rules) | clean |
-| Mobile tests (`jest`) | **181 passed** (money, phone, dates, validation, offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), splash-on-reopen rules, M-Pesa SMS reading, reminder SMS from the phone, one-tap SMS/WhatsApp reminders, M-Pesa matching screen, credit-notice SMS on the debt form, password show/hide, phone-book search and "From your phone" (permissions, landlines, unreadable contacts), recording a debt for a new contact online and offline with duplicate checks, Pick from contacts, learned M-Pesa names on the customer page, components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
+| Mobile tests (`jest`) | **189 passed** (money, phone, dates, validation, several items per debt (one per line), offline sync engine, API client refresh, server-address checks, light/dark palette contrast (WCAG AA), splash-on-reopen rules, M-Pesa SMS reading, reminder SMS from the phone, one-tap SMS/WhatsApp reminders, M-Pesa matching screen, credit-notice SMS on the debt form, password show/hide, phone-book search and "From your phone" (permissions, landlines, unreadable contacts), recording a debt for a new contact online and offline with duplicate checks, Pick from contacts, learned M-Pesa names on the customer page, components and accessibility, sign-in, record-payment flow incl. overpayment, M-Pesa and offline queueing, dashboard incl. offline cache) |
 | `expo install --check` | dependencies up to date |
 | Android release APK (`gradlew assembleRelease`) | **built** on Windows (29.5 min): `ke.denitrack.app` 1.0.0, Android 7.0+ (API 24), target API 36, arm64-v8a + x86_64, JS bundle embedded, SQLCipher compiled in; signed with the debug key (test build) |
 
@@ -131,7 +131,7 @@ search the phone book for a customer. The APK requests internet and network-stat
 | 11 | Unauthorised users blocked | Done: role tests |
 | 12 | Businesses isolated | Done: application checks plus PostgreSQL RLS, both tested |
 | 13 | Financial changes auditable | Done: audit log with before/after and reason |
-| 14 | Core workflows tested | Done: 202 backend + 9 PostgreSQL + 181 mobile tests |
+| 14 | Core workflows tested | Done: 203 backend + 9 PostgreSQL + 189 mobile tests |
 | 15 | Mobile app buildable from docs | Done on Windows (release APK built from the documented steps). The Linux CI Android job has not been run yet |
 | 16 | Mock / sandbox / production modes distinct | Done: explicit config, shown in `/health` and the app |
 | 17 | Limitations documented | Done: below and in [security.md](docs/security.md) |

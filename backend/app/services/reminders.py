@@ -462,7 +462,9 @@ def queue_credit_notice(db: Session, business: Business, debt: Debt, now_utc: da
     whatever the time of day. Customers who opted out of SMS get none. One per debt.
     """
     customer = debt.customer
-    items = " ".join(debt.description.split())
+    # Items are typed one per line in the app; the SMS lists them on one line with commas.
+    lines = (" ".join(line.split()).rstrip(",;") for line in debt.description.splitlines())
+    items = ", ".join(line for line in lines if line)
     if len(items) > NOTICE_ITEMS_MAX:
         items = items[: NOTICE_ITEMS_MAX - 1].rstrip(" ,;.") + "…"
     message = render(

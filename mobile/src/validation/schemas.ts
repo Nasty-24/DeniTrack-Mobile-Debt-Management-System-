@@ -77,7 +77,11 @@ export const customerSchema = z.object({
 export const debtSchema = z
   .object({
     customer_id: z.string().min(1, 'Choose a customer'),
-    description: z.string().trim().min(2, 'Describe the goods or service').max(500),
+    description: z
+      .string()
+      .trim()
+      .min(2, 'Describe the goods or service')
+      .max(500, 'Keep the list under 500 characters, or split it into two debts'),
     principal: amount,
     incurred_on: isoDate,
     due_date: isoDate,

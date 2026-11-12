@@ -22,6 +22,7 @@ import { colors, space } from '../theme/tokens';
 import type { Debt, Payment, PaymentMethod, PaymentRequest, Receipt } from '../types/api';
 import { dueLabel, formatDateTime } from '../utils/dates';
 import { add, formatKES, fromCents, isPositive, parseAmountInput, subtract, toCents } from '../utils/money';
+import { itemsOnOneLine } from '../utils/text';
 import { checkNotOverpaying, paymentMethods, paymentSchema, type PaymentForm } from '../validation/schemas';
 
 const allocatable = (d: Debt) => {
@@ -145,7 +146,7 @@ export function RecordPaymentScreen({ route, navigation }: AppScreenProps<'Recor
                 <View key={d.id}>
                   <Divider inset={space.lg} />
                   <ListRow
-                    title={`${d.debt_number} · ${d.description}`}
+                    title={`${d.debt_number} · ${itemsOnOneLine(d.description)}`}
                     subtitle={`${formatKES(allocatable(d))} payable · ${dueLabel(d.next_due_date ?? d.due_date)}`}
                     right={<AppText color={debtId === d.id ? colors.brandText : colors.inkFaint}>{debtId === d.id ? 'Selected' : ''}</AppText>}
                     onPress={() => setValue('debt_id', d.id)}
@@ -396,7 +397,7 @@ export function receiptHtml(r: Receipt): string {
   const s = r.snapshot;
   const esc = (v: string | null | undefined) => (v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const rows = s.allocations
-    .map((a) => `<tr><td>${esc(a.debt_number)} – ${esc(a.description)}</td><td class="r">${esc(formatKES(a.amount))}</td><td class="r">${esc(formatKES(a.balance_after))}</td></tr>`)
+    .map((a) => `<tr><td>${esc(a.debt_number)} – ${esc(itemsOnOneLine(a.description))}</td><td class="r">${esc(formatKES(a.amount))}</td><td class="r">${esc(formatKES(a.balance_after))}</td></tr>`)
     .join('');
   return `<html><head><meta charset="utf-8"><style>
     body{font-family:-apple-system,Roboto,sans-serif;color:#1B1E1C;padding:24px;max-width:480px}

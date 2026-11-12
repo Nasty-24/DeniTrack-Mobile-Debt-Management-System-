@@ -11,6 +11,7 @@ import { useSession } from '../hooks/useSession';
 import { colors, radius, space } from '../theme/tokens';
 import { dueLabel, formatDate, formatDateTime } from '../utils/dates';
 import { isZero } from '../utils/money';
+import { itemsOnOneLine } from '../utils/text';
 
 export function DashboardScreen() {
   const navigation = useNavigation();
@@ -136,7 +137,7 @@ export function DashboardScreen() {
               {i > 0 ? <Divider inset={space.lg} /> : null}
               <ListRow
                 title={x.customer_name}
-                subtitle={`${x.debt_number} · ${x.description}`}
+                subtitle={`${x.debt_number} · ${itemsOnOneLine(x.description)}`}
                 right={<MoneyText amount={x.principal} />}
                 onPress={() => navigation.navigate('DebtDetail', { debtId: x.id })}
               />

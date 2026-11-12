@@ -106,6 +106,13 @@ def test_sent_by_the_sms_provider_when_chosen(owner, provider):
     assert sent.to == "+254712345670" and "Cement 2 bags" in sent.body
 
 
+def test_items_typed_on_separate_lines_are_listed_with_commas(owner):
+    c = owner.customer(phone="0712345670")
+    credit(owner, c["id"], description="Sugar 2kg,\nBread\n\n  Milk   1L ")
+    [item] = owner.get("/reminders/phone-queue").json()
+    assert "has recorded Sugar 2kg, Bread, Milk 1L taken on credit" in item["message"]
+
+
 def test_long_descriptions_are_shortened(owner):
     c = owner.customer()
     credit(owner, c["id"], description="Assorted groceries " * 20)

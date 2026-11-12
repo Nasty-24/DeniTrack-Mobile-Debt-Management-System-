@@ -10,7 +10,7 @@ import { wipeLocalData } from '../database/localDb';
 import { CustomerFormScreen, CustomerProfileScreen } from '../screens/CustomerScreens';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { DebtFormScreen } from '../screens/DebtScreens';
-import { RecordPaymentScreen } from '../screens/PaymentScreens';
+import { RecordPaymentScreen, receiptHtml } from '../screens/PaymentScreens';
 import { SignInScreen } from '../screens/auth/AuthScreens';
 import { api } from '../services/api';
 import { ApiError } from '../services/apiClient';
@@ -198,6 +198,28 @@ describe('Record debt', () => {
     expect(await fillAndSave()).toMatchObject({ notify_customer: false });
   });
 
+  it('takes one item per line, with Enter starting a new line', async () => {
+    mockOutbox.submit.mockResolvedValue({ queued: false, result: debt({ id: 'd9' }) });
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    const items = screen.getByLabelText('What was taken on credit');
+    expect(items.props.multiline).toBe(true);
+    expect(items.props.submitBehavior).toBe('newline');
+    await fireEvent.changeText(items, 'Sugar 2kg\nBread\nMilk 1L');
+    await fireEvent.changeText(screen.getByLabelText('Amount'), '480');
+    await fireEvent.press(screen.getByRole('button', { name: 'Record debt' }));
+    await waitFor(() => expect(mockOutbox.submit).toHaveBeenCalled());
+    expect(mockOutbox.submit.mock.calls[0][1]).toMatchObject({ description: 'Sugar 2kg\nBread\nMilk 1L' });
+  });
+
+  it('explains when the list of items is too long', async () => {
+    await render(wrap(<DebtFormScreen navigation={mockNav as never} route={route} />));
+    await fireEvent.changeText(screen.getByLabelText('What was taken on credit'), 'Sugar 2kg\n'.repeat(60));
+    await fireEvent.changeText(screen.getByLabelText('Amount'), '480');
+    await fireEvent.press(screen.getByRole('button', { name: 'Record debt' }));
+    expect(await screen.findByText('Keep the list under 500 characters, or split it into two debts')).toBeTruthy();
+    expect(mockOutbox.submit).not.toHaveBeenCalled();
+  });
+
   it('says the SMS waits when the debt is saved offline', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     mockOutbox.submit.mockResolvedValue({ queued: true, localId: 'local-1' });
@@ -205,6 +227,58 @@ describe('Record debt', () => {
     await fillAndSave();
     await waitFor(() => expect(alert).toHaveBeenCalled());
     expect(alert.mock.calls[0][1]).toMatch(/SMS to the customer goes once it is recorded/);
+  });
+});
+
+describe('Debts with several items', () => {
+  const ITEMS = 'Sugar 2kg\nBread\nMilk 1L';
+
+  it('shows them on one line when choosing a debt to pay', async () => {
+    jest.spyOn(api, 'get').mockImplementation(async (path: string) => {
+      if (path.endsWith('/settings')) return { payment_methods: ['cash'] } as never;
+      if (path.endsWith('/customers/c1/debts')) return [debt({ description: ITEMS })] as never;
+      return { items: [], total: 0, limit: 200, offset: 0 } as never;
+    });
+    await render(wrap(<RecordPaymentScreen navigation={mockNav as never} route={{ key: 'k', name: 'RecordPayment', params: { customerId: 'c1' } } as never} />));
+    expect(await screen.findByText('D-000001 · Sugar 2kg, Bread, Milk 1L')).toBeTruthy();
+  });
+
+  it("shows them on one line in the customer's debts", async () => {
+    jest.spyOn(api, 'get').mockImplementation(async (path: string) => {
+      if (path.endsWith('/debts')) return [debt({ description: ITEMS })] as never;
+      if (path.endsWith('/payments') || path.endsWith('/mpesa-names')) return [] as never;
+      return {
+        id: 'c1', customer_number: 'C-00001', name: 'Achieng Atieno', phone: '+254712345678', email: null, address: null, notes: null,
+        status: 'active', sms_opt_in: true, created_at: '2026-10-01T08:00:00Z', updated_at: '2026-10-01T08:00:00Z', version: 1,
+        outstanding_balance: '800.00', overdue_amount: '0.00', pending_verification: '0.00', open_debts: 1,
+      } as never;
+    });
+    await render(wrap(<CustomerProfileScreen navigation={mockNav as never} route={{ key: 'k', name: 'CustomerProfile', params: { customerId: 'c1' } } as never} />));
+    expect(await screen.findByText('Sugar 2kg, Bread, Milk 1L')).toBeTruthy();
+  });
+
+  it('shows them on one line in recent debts on the dashboard', async () => {
+    const summary: DashboardSummary = {
+      as_of: '2026-11-12', currency: 'KES', total_outstanding: '480.00', total_overdue: '0.00', overdue_debts: 0,
+      collected_today: '0.00', collected_this_month: '0.00', pending_verification: '0.00', pending_verification_count: 0,
+      customers_with_balance: 1, due_soon: [], recent_payments: [],
+      recent_debts: [{ id: 'd1', debt_number: 'D-000001', customer_id: 'c1', customer_name: 'Achieng Atieno', principal: '480.00', description: ITEMS, created_at: '2026-11-12T08:00:00Z' }],
+    };
+    jest.spyOn(api, 'get').mockResolvedValue(summary as never);
+    await render(wrap(<DashboardScreen />));
+    expect(await screen.findByText('D-000001 · Sugar 2kg, Bread, Milk 1L')).toBeTruthy();
+  });
+
+  it('shows them on one line on the receipt', () => {
+    const html = receiptHtml({
+      receipt_number: 'RCT-2026-000001', payment_status: 'verified',
+      snapshot: {
+        business: { name: 'Duka la Mama', address: null, phone: null }, customer: { name: 'Achieng Atieno', number: 'C-00001' },
+        paid_at: '2026-11-12T08:00:00Z', amount: '480.00', method: 'cash', external_reference: null, recorded_by: 'Wanjiru Kamau',
+        allocations: [{ debt_number: 'D-000001', description: ITEMS, amount: '480.00', balance_after: '0.00' }],
+      },
+    } as never);
+    expect(html).toContain('D-000001 – Sugar 2kg, Bread, Milk 1L');
   });
 });
 

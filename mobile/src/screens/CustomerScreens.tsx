@@ -33,6 +33,7 @@ import type { Customer, MpesaName } from '../types/api';
 import { dueLabel, formatDate, formatDateTime } from '../utils/dates';
 import { formatKES, isPositive, isZero } from '../utils/money';
 import { formatPhone, normalizeKenyanPhone } from '../utils/phone';
+import { itemsOnOneLine } from '../utils/text';
 import { customerSchema, type CustomerForm } from '../validation/schemas';
 
 type Filter = 'all' | 'outstanding' | 'overdue';
@@ -403,7 +404,7 @@ export function CustomerProfileScreen({ route, navigation }: AppScreenProps<'Cus
             <View key={d.id}>
               {i > 0 ? <Divider inset={space.lg} /> : null}
               <ListRow
-                title={d.description}
+                title={itemsOnOneLine(d.description)}
                 subtitle={`${d.debt_number} · ${d.status === 'paid' ? 'Settled' : dueLabel(d.next_due_date ?? d.due_date)}`}
                 onPress={() => navigation.navigate('DebtDetail', { debtId: d.id })}
                 right={<View style={{ alignItems: 'flex-end', gap: 4 }}><MoneyText amount={d.balance} /><DebtStatusBadge status={d.status} /></View>}
